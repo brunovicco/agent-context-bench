@@ -1,0 +1,18 @@
+provider = "anthropic"
+model = "claude-sonnet-5-5"
+repetitions = 3
+strategies = ["full", "cache", "summary"]
+summary_after = 3
+max_output_tokens = 2048
+timeout_seconds = 60
+seed = 42
+
+# USD per million tokens; public list prices checked on 2026-11-06.
+# Cache writes: total price for the 5-minute TTL used by the project.
+# Source: https://platform.claude.com/docs/en/about-claude/pricing
+[rates]
+input = 2.0
+cache_read = 0.1
+cache_write = 2.5
+output = 10.0
+as_of = "2026-11-06"

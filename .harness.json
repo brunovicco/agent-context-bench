@@ -1,0 +1,58 @@
+{
+  "files": {
+    ".github/workflows/quality.yml": {
+      "mode": "0644",
+      "sha256": "c6d12ee05da691837b6326dd4dcb635dcc31b1f93ce628984b5e4696101b701d"
+    },
+    ".gitignore": {
+      "mode": "0644",
+      "sha256": "2feb90a7e69e7565bcca372aeb6fa76236bf9816c719b2253d14e2db2c220861"
+    },
+    ".python-version": {
+      "mode": "0644",
+      "sha256": "02e735b3dfe1c32833eb550b7ff8ffa17f5f2bc3fa1e7bae61a8f5a3883ce398"
+    },
+    "AGENTS.md": {
+      "mode": "0644",
+      "sha256": "7284ffe20e8aa20f4394f9b43ed69f7ca4da2795baea13e26dea47080a840854"
+    },
+    "README.md": {
+      "mode": "0644",
+      "sha256": "edb7c6e19bce7ea7545dc2e16ba2be2b7723f209364608949dcd33e6bcf76e9a"
+    },
+    "pyproject.toml": {
+      "mode": "0644",
+      "sha256": "f3026b94820134ce395ce6c0b8f999d596c8a29a192259317d5ef55b4d3e685e"
+    },
+    "scripts/quality_gate.py": {
+      "mode": "0644",
+      "sha256": "97eacb25c2391e166b0c86ea993aff26ede7648206ff267a97dde0aaecd7fc0d"
+    },
+    "scripts/validate_architecture.py": {
+      "mode": "0644",
+      "sha256": "3c291644f092a06c9c5b4b6d4508b132b3fc9b390b23e45b59871b7ec2adf688"
+    },
+    "src/agent_context_bench/__init__.py": {
+      "mode": "0644",
+      "sha256": "a163581ed526581932c7ad11a1066239cea9bfcb8b937e3370b79a00710efc4f"
+    },
+    "tests/__init__.py": {
+      "mode": "0644",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/unit/test_package.py": {
+      "mode": "0644",
+      "sha256": "cdfcb0fac606dbcb13d9fba4e4f8f4f43828a6aa2b447077c28d3333607e87c0"
+    }
+  },
+  "gitBranch": "main",
+  "governanceCatalogVersion": "2026.1",
+  "governanceOverlays": [],
+  "governanceProfile": "none",
+  "profile": "library",
+  "python": "3.13",
+  "sourceCommit": "e9e297456573d216f070a41a7cdaa108dd599c5b",
+  "sourceDirty": false,
+  "version": "1.2.1",
+  "customization": "Lean benchmark: unused hooks, skills, governance and documentation removed."
+}

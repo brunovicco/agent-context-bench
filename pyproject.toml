@@ -1,0 +1,96 @@
+[project]
+name = "agent-context-bench"
+version = "0.1.0"
+description = "Reproducible prompt-cache and context-management experiments"
+readme = "README.md"
+requires-python = ">=3.13,<3.15"
+dependencies = ["openai>=2,<3", "anthropic>=0.75,<1", "httpx>=0.28,<1"]
+
+[project.scripts]
+context-bench = "agent_context_bench.cli:main"
+
+[project.optional-dependencies]
+telemetry = ["a2a-otel-kit==0.6.0"]
+
+[dependency-groups]
+dev = [
+    "bandit[toml]>=1.8",
+    "mypy>=1.16",
+    "pip-audit>=2.9",
+    "pytest>=8.4",
+    "pytest-cov>=6.2",
+    "ruff>=0.12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_context_bench"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF", "ANN", "D", "S"]
+ignore = ["ANN401", "D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D", "S101", "ANN"]
+"scripts/**/*.py" = ["D"]
+# scripts/_vendor_loop_schemas/models.py quotes its `from_dict` classmethods'
+# self-referencing return annotations on purpose (see that file's own header
+# comment): the quotes are load-bearing on Python 3.12/3.13 and only look
+# removable to ruff's UP037 when this project's own target-version is 3.14.
+# Suppressed here (not with an inline noqa) because an inline noqa becomes an
+# unused-directive RUF100 error on 3.12/3.13, where UP037 never fires.
+"scripts/_vendor_loop_schemas/models.py" = ["UP037"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_configs = true
+warn_unused_ignores = true
+show_error_codes = true
+pretty = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --cov=src/agent_context_bench --cov-report=term-missing"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/agent_context_bench"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 80
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = []
+
+[tool.engineering-harness.quality]
+source-roots = ["src"]
+test-roots = ["tests"]
+
+[tool.engineering-harness.architecture]
+source-roots = ["src"]
+clean-architecture = false
