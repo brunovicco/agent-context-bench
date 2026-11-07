@@ -1,0 +1,32 @@
+provider = "anthropic"
+model = "claude-sonnet-5-5"
+repetitions = 3
+strategies = ["cache", "delegate_same_model", "delegate_small_model"]
+summary_after = 3
+max_output_tokens = 2048
+timeout_seconds = 60
+seed = 42
+
+# USD per million tokens; public list prices checked on 2026-11-06.
+# Cache writes: total price for the 5-minute TTL used by the project.
+# Source: https://platform.claude.com/docs/en/about-claude/pricing
+[rates]
+input = 2.0
+cache_read = 0.1
+cache_write = 2.5
+output = 10.0
+as_of = "2026-11-06"
+
+# Same-model delegation inherits the main model and [rates].
+# This section is used only for delegate_small_model, on the same provider.
+[subagent]
+model = "claude-haiku-5-5"
+
+# Standard USD/MTok prices for prompts up to 100,000 input tokens.
+# Source: https://platform.claude.com/docs/en/about-claude/pricing
+[subagent.rates]
+input = 0.1
+cache_read = 0.01
+cache_write = 0.125
+output = 0.5
+as_of = "2026-11-06"
