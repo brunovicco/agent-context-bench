@@ -141,7 +141,6 @@ três repetições, 84 chamadas por provedor. Use sempre uma pasta de saída nov
 
 Para comparar `full`, `cache` e `summary`, use `configs/openai.toml` ou
 `configs/anthropic.toml`. Com três repetições, são 57 chamadas previstas por provedor.
-Os comandos de atualização e reprodução estão em [COMANDOS.md](COMANDOS.md).
 
 ### Leia os resultados
 
