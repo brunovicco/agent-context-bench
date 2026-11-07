@@ -1,112 +1,116 @@
 # agent-context-bench
 
-**Quanto custa manter contexto — e quando vale delegar parte do trabalho a outro modelo?**
+**English** | [Português (Brasil)](README.pt-br.md)
 
-Este projeto compara histórico completo, cache, resumo e delegação usando as APIs da
-OpenAI e da Anthropic. Mede custo, tempo e acerto na resposta final de um mesmo incidente,
-com contabilização separada para o agente principal e o subagente.
+**How much does maintaining context cost-and when is it worth delegating work to another model?**
 
-No piloto de delegação, usar um subagente mais barato reduziu o custo por tarefa aprovada
-em **73,3% na OpenAI** e **66,2% na Anthropic**, frente ao controle com cache. O tempo mediano
-da sessão aumentou para **1,99×** e **2,38×**, respectivamente. Delegar ao mesmo modelo
-ficou mais caro nos dois provedores.
+This project compares full conversation history, caching, summarization, and delegation
+using the OpenAI and Anthropic APIs. It measures cost, elapsed time, and final-answer
+correctness for the same incident, with separate accounting for the main agent and subagent.
 
-**Escopo desses números:** três repetições por condição, um único cenário sintético,
-chamadas reais às APIs. Todas as condições passaram em 3/3 sessões. É uma medição inicial
-de repetibilidade, sem evidência de qualidade equivalente em tarefas variadas.
+In the delegation pilot, using a cheaper subagent reduced cost per successful task by
+**73.3% on OpenAI** and **66.2% on Anthropic**, compared with the cached baseline. Median
+session time increased to **1.99×** and **2.38×**, respectively. Delegating to the same
+model cost more on both providers.
 
-[Resultados](#resultados-do-piloto) · [Como funciona](#como-funciona) ·
-[Executar](#executar) · [Método](#método-e-limites) · [Desenvolvimento](#desenvolvimento)
+**Scope of these results:** three repetitions per condition, one synthetic scenario,
+and live API calls. Every condition passed in 3/3 sessions. This is an initial measurement
+of repeatability; it does not establish equivalent quality across different tasks.
 
-## Resultados do piloto
+[Results](#pilot-results) · [How it works](#how-it-works) ·
+[Run it](#run-it) · [Method](#method-and-limitations) · [Development](#development)
 
-Custo calculado pelas tarifas configuradas. Tempo corresponde à mediana da sessão completa,
-incluindo as chamadas de delegação. O controle `cache` é a referência de cada provedor.
+## Pilot results
 
-| Provedor | Estratégia | USD por tarefa aprovada | Variação de custo | Tempo mediano | Aprovação |
-| --- | --- | ---: | ---: | ---: | ---: |
-| OpenAI | Cache | 0,08477 | — | 9,75 s | 3/3 |
-| OpenAI | Subagente do mesmo modelo | 0,11160 | +31,6% | 19,59 s | 3/3 |
-| OpenAI | Subagente mais barato | **0,02266** | **−73,3%** | 19,38 s | 3/3 |
-| Anthropic | Cache | 0,07313 | — | 10,21 s | 3/3 |
-| Anthropic | Subagente do mesmo modelo | 0,11039 | +51,0% | 32,69 s | 3/3 |
-| Anthropic | Subagente mais barato | **0,02470** | **−66,2%** | 24,28 s | 3/3 |
+Costs are calculated from the configured rates. Time is the median for the entire session,
+including delegation calls. The `cache` condition is the baseline within each provider.
 
-Configuração dos modelos: GPT-5.6 Sol com GPT-6 Luna na OpenAI; Claude Sonnet 5.5 com
-Claude Haiku 5.5 na Anthropic. A variante de mesmo modelo usa o modelo principal nos dois papéis.
-Os nomes acima são os modelos solicitados nas configurações, não uma verificação de versões retornadas.
+| Provider | Strategy | USD per successful task | Cost change | Median time | Passed |
+|---|---|---:|---:|---:|---:|
+| OpenAI | Cache | 0.08477 | - | 9.75 s | 3/3 |
+| OpenAI | Subagent using the same model | 0.11160 | +31.6% | 19.59 s | 3/3 |
+| OpenAI | Cheaper subagent | **0.02266** | **−73.3%** | 19.38 s | 3/3 |
+| Anthropic | Cache | 0.07313 | - | 10.21 s | 3/3 |
+| Anthropic | Subagent using the same model | 0.11039 | +51.0% | 32.69 s | 3/3 |
+| Anthropic | Cheaper subagent | **0.02470** | **−66.2%** | 24.28 s | 3/3 |
 
-Os dois lotes somaram **168 chamadas**, 18 sessões e **US$ 1,28175** de custo calculado.
-Uso completo e controle de cache válido foram reportados em todas as condições.
+Configured models: GPT-5.6 Sol with GPT-6 Luna on OpenAI; Claude Sonnet 5.5 with
+Claude Haiku 5.5 on Anthropic. The same-model variant uses the main model in both roles.
+These names identify the models requested in the configurations, not verified returned versions.
 
-### O que esses números mostram
+Together, the two runs recorded **168 calls**, 18 sessions, and **USD 1.28175** in calculated
+cost. Complete usage accounting and valid cache controls were reported for every condition.
 
-- **Um contexto menor no principal não significa a mesma redução no processamento total.**
-  Com o subagente barato, os tokens de entrada acumulados do principal caíram 93,2% na OpenAI
-  e 85,8% na Anthropic. Somando os dois papéis, as quedas foram 18,0% e 8,7%.
-- **O modelo escolhido para a delegação importa.** O fluxo com o mesmo modelo custou mais
-  que o controle. Com o modelo barato, parte do processamento passou a ter uma tarifa menor.
-  A comparação também inclui mudanças nas notas e respostas geradas.
-- **Há um custo de tempo.** A delegação deste experimento é sequencial: cada turno espera
-  o subagente antes de chamar o principal. São 11 chamadas por sessão, contra 6 no controle.
-- **Cache habilitado não garante cache utilizado.** Na OpenAI, o principal das variantes
-  delegadas reportou zero leitura de cache; seus subagentes ficaram em aproximadamente 66,6%.
-  As notas curtas podem reduzir as oportunidades de reaproveitamento.
+### What the numbers show
 
-Exemplo de cálculo, usando os custos totais das três repetições:
+- **Less context in the main agent does not imply an equal reduction in total processing.**
+  With the cheaper subagent, cumulative main-agent input tokens fell by 93.2% on OpenAI
+  and 85.8% on Anthropic. Across both roles, the reductions were 18.0% and 8.7%.
+- **The model used for delegation matters.** Delegating to the same model cost more than
+  the baseline. With the cheaper model, some processing moved to a lower rate.
+  The comparison also includes differences in the notes and answers generated.
+- **There is a time cost.** Delegation in this experiment is sequential: each turn waits
+  for the subagent before calling the main agent. A session makes 11 calls, versus 6 in the baseline.
+- **Enabling caching does not guarantee cache reads.** On OpenAI, the main agent in the
+  delegated variants reported no cache reads; its subagents reached approximately 66.6%.
+  Short notes can reduce opportunities for cache reuse.
+
+Example calculation using the total costs of the three repetitions:
 
 ```text
-OpenAI:    (1 − 0,0679741 / 0,2543148) × 100 = 73,3%
-Anthropic: (1 − 0,07409805 / 0,2193878) × 100 = 66,2%
+OpenAI:    (1 − 0.0679741 / 0.2543148) × 100 = 73.3%
+Anthropic: (1 − 0.07409805 / 0.2193878) × 100 = 66.2%
 ```
 
-Os valores publicados estão em [benchmarks/delegation-validation.csv](benchmarks/delegation-validation.csv).
-O arquivo é uma transcrição dos agregados de `context-bench report` dos lotes
-`openai-delegation-validation-01` e `anthropic-delegation-validation-01`, fornecidos pelo autor.
-Os arquivos brutos e manifests dessas execuções permanecem locais e não acompanham este snapshot.
-Rodadas anteriores, com outro contrato de saída, não entram nesta tabela.
+The published values are in [benchmarks/delegation-validation.csv](benchmarks/delegation-validation.csv).
+This file transcribes the `context-bench report` aggregates supplied by the author for
+`openai-delegation-validation-01` and `anthropic-delegation-validation-01`.
+The raw files and manifests from those runs remain local and are not included in this snapshot.
+Earlier runs using a different output contract are excluded from this table.
 
-## Como funciona
+## How it works
 
-O cenário simula a investigação de um incidente em processamento de pagamentos. Evidências
-chegam em cinco turnos: uma hipótese inicial, sua correção, a causa identificada e duas
-verificações em sandbox. O sexto turno pede uma resposta JSON. Logs irrelevantes aumentam
-progressivamente o contexto.
+The scenario simulates an investigation into a payment-processing incident. Evidence
+arrives over five turns: an initial hypothesis, its correction, the identified cause,
+and two sandbox checks. The sixth turn requests a JSON answer. Irrelevant logs
+progressively increase the context.
 
-A avaliação verifica cinco pontos: causa, ação, necessidade de aprovação humana,
-hipótese descartada e referência à evidência causal. Usa regras determinísticas, sem um LLM juiz.
-Os valores esperados vêm das evidências; o prompt de sistema descreve o formato, sem entregar o gabarito.
+Evaluation checks five items: cause, action, human approval requirement, discarded
+hypothesis, and a reference to the causal evidence. It uses deterministic rules, without
+an LLM judge. Expected values come from the evidence; the system prompt describes the
+format without providing the answer key.
 
-| Estratégia | O que muda | Chamadas por sessão |
-| --- | --- | ---: |
-| `full` | Histórico completo, controle sem cache | 6 |
-| `cache` | Histórico completo com cache | 6 |
-| `summary` | Uma chamada de resumo substitui o histórico após três turnos; cache ativo | 7 |
-| `delegate_same_model` | Um subagente mantém as evidências brutas; principal recebe notas; mesmo modelo | 11 |
-| `delegate_small_model` | Mesmo fluxo de delegação, com outro modelo no subagente | 11 |
+| Strategy | What changes | Calls per session |
+|---|---|---:|
+| `full` | Full history with caching disabled for the control | 6 |
+| `cache` | Full history with caching enabled | 6 |
+| `summary` | One summary call replaces the history after three turns; caching enabled | 7 |
+| `delegate_same_model` | A subagent keeps the raw evidence; the main agent receives notes; both use the same model | 11 |
+| `delegate_small_model` | The same delegation flow, using a different model for the subagent | 11 |
 
-O subagente é único, mantém seu próprio histórico e recebe apenas as evidências já liberadas.
-A cada turno, produz notas de até 200 palavras — limite solicitado no prompt, sem truncamento
-local. O principal recebe as notas como dados, mantém seu histórico e responde ao turno final.
-Ambos usam a mesma política de cache. Nenhum agente executa ações ou acessa ferramentas reais.
+There is one subagent. It maintains its own history and receives only evidence that has
+already been released. Each turn, it produces notes of up to 200 words-a prompt instruction,
+not a limit enforced through local truncation. The main agent receives these notes as data,
+maintains its history, and answers the final turn. Both use the same cache policy.
+Neither agent executes actions or accesses real tools.
 
-### O formato da resposta também faz parte do experimento
+### The answer format is part of the experiment
 
-Uma rodada de diagnóstico retornou `retry_storm` e `database_latency` acompanhados de
-explicações. A informação estava presente, mas os campos reprovaram na comparação exata.
-Outra resposta não era JSON válido; o diagnóstico disponível não permite determinar sua forma.
+One diagnostic run returned `retry_storm` and `database_latency` with explanations appended.
+The information was present, but the fields failed exact matching. Another answer was not
+valid JSON; the available diagnostic does not reveal its form.
 
-O contrato passou a exigir identificadores sem explicações e um objeto JSON sem Markdown.
-A instrução foi aplicada a todos os provedores e estratégias, mantendo a avaliação estrita.
-Os controles foram executados novamente. Por isso, os resultados anteriores e posteriores
-à mudança devem ser analisados como lotes distintos.
+The output contract was updated to require identifiers without explanations and a JSON
+object without Markdown. The instruction was applied to all providers and strategies,
+while keeping evaluation strict. The baselines were rerun. Results before and after
+this change must therefore be analyzed as separate batches.
 
-## Executar
+## Run it
 
-Requisitos: Python 3.13 ou 3.14 e `uv`. O núcleo usa SDKs oficiais e arquivos locais;
-não precisa de servidor, banco de dados ou framework de agentes.
+Requirements: Python 3.13 or 3.14 and `uv`. The core uses official SDKs and local files;
+it does not require a server, database, or agent framework.
 
-### Comece sem credenciais
+### Start without credentials
 
 ```bash
 uv sync --frozen
@@ -114,16 +118,16 @@ uv run context-bench demo --output results/demo-01
 uv run context-bench report results/demo-01
 ```
 
-O demo usa respostas fixas, tokens zerados e custos nulos. Serve para verificar a instalação
-e o fluxo de arquivos; não produz medidas de desempenho ou qualidade de modelos.
+The demo uses fixed responses, zero token counts, and null costs. It checks the installation
+and file workflow; it does not measure model performance or quality.
 
-### Execute com as APIs
+### Run against the APIs
 
-Disponibilize `OPENAI_API_KEY` e/ou `ANTHROPIC_API_KEY` no ambiente ou em um `.env` local.
-Revise os modelos disponíveis na sua conta e as tarifas em `configs/` antes de usar `--live`.
-As tarifas dos exemplos são datadas; não representam uma consulta atual de preços.
+Set `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY` in the environment or a local `.env` file.
+Check model availability in your account and the rates in `configs/` before using `--live`.
+The example rates are dated snapshots, not a current pricing lookup.
 
-Para uma repetição das três estratégias de delegação:
+For one repetition of the three delegation strategies:
 
 ```bash
 uv run --env-file .env context-bench run \
@@ -135,99 +139,102 @@ uv run --env-file .env context-bench run \
   --output results/anthropic-delegation-01 --live
 ```
 
-São 28 chamadas previstas por provedor. Para reproduzir o desenho do piloto, use
-`configs/openai-delegation-validation.toml` e `configs/anthropic-delegation-validation.toml`:
-três repetições, 84 chamadas por provedor. Use sempre uma pasta de saída nova.
+These configurations schedule 28 calls per provider. To reproduce the pilot design, use
+`configs/openai-delegation-validation.toml` and `configs/anthropic-delegation-validation.toml`:
+three repetitions and 84 calls per provider. Always use a new output directory.
 
-Para comparar `full`, `cache` e `summary`, use `configs/openai.toml` ou
-`configs/anthropic.toml`. Com três repetições, são 57 chamadas previstas por provedor.
+To compare `full`, `cache`, and `summary`, use `configs/openai.toml` or
+`configs/anthropic.toml`. With three repetitions, these schedule 57 calls per provider.
 
-### Leia os resultados
+### Read the results
 
 ```bash
 uv run context-bench report results/openai-delegation-01
 ```
 
-| Arquivo local | Conteúdo |
-| --- | --- |
-| `manifest.json` | Configuração, versões dos SDKs, hashes do cenário e da delegação, ordem e estado do lote |
-| `calls.jsonl` | Uso, custo, modelo solicitado/retornado, papel, operação, bytes e latência por chamada |
-| `sessions.jsonl` | Estado da sessão, aprovação e resultado de cada verificação |
-| `summary.csv` | Agregados por estratégia, incluindo custo por tarefa aprovada |
+| Local file | Contents |
+|---|---|
+| `manifest.json` | Configuration, SDK versions, scenario and delegation hashes, strategy order, and run status |
+| `calls.jsonl` | Usage, cost, requested/returned model, role, operation, bytes, and latency per call |
+| `sessions.jsonl` | Session status, pass/fail result, and individual evaluation checks |
+| `summary.csv` | Aggregates by strategy, including cost per successful task |
 
-Para investigar reprovações, adicione `--diagnostics` ao comando `run`. A opção registra
-somente os cinco campos avaliados do JSON final, com presença e tipo. Textos têm limite de
-256 caracteres e evidências de dez entradas; outros tipos inesperados não têm seu conteúdo salvo.
-A opção é desligada por padrão e não altera as requisições nem a avaliação.
+To investigate failures, add `--diagnostics` to `run`. This records only the five evaluated
+fields from the final JSON, including their presence and type. Text is limited to 256
+characters and evidence to ten entries; content of other unexpected types is not saved.
+The option is off by default and does not change requests or evaluation.
 
 ```bash
-jq '{strategy, passed, checks, answer_diagnostics}' results/SEU_LOTE/sessions.jsonl
+jq '{strategy, passed, checks, answer_diagnostics}' results/YOUR_RUN/sessions.jsonl
 ```
 
-`Completed` indica que o lote terminou, não que todas as tarefas passaram. Falhas de API
-interrompem o lote; os SDKs estão configurados com `max_retries=0`. Saída vazia ou truncada
-reprova a sessão. Não há reparo automático de respostas nem retomada do lote interrompido.
+`Completed` means the run finished, not that every task passed. API errors stop the run;
+the SDKs are configured with `max_retries=0`. Empty or truncated output fails the session.
+There is no automatic answer repair or resumption of an interrupted run.
 
-## Método e limites
+## Method and limitations
 
-- A ordem das estratégias é embaralhada por repetição, com seed registrada. Os prefixos
-  são próprios de cada sessão/papel e permanecem estáveis dentro de seus históricos.
-- Cache é medido pelos contadores retornados. Os turnos ficam identificados no JSONL:
-  o primeiro não é presumido frio, nem os seguintes presumidos hits.
-- `known_input_tokens` soma entradas das requisições, incluindo leituras e escritas de cache.
-  Não representa o pico da janela de contexto nem tokens únicos.
-- `task_latency_*` mede somente chamadas de tarefa do principal. Para comparar o fluxo completo,
-  use `session_elapsed_p50_ms`. O TTFT considera o primeiro delta de texto.
-- O custo inclui as chamadas de ambos os papéis, inclusive tentativas malsucedidas com uso conhecido.
-  Uso ou tarifa ausente produz custo desconhecido (`null`), não zero.
-- O texto do cenário é comum, mas tokenização, respostas, tarifas e padrões de raciocínio diferem.
-  Compare primeiro as estratégias dentro de cada provedor. Este piloto não é um ranking de modelos.
-- Três repetições do mesmo caso não medem generalização. O p95 de poucas chamadas é descritivo;
-  não há aqui uma estimativa robusta de cauda nem teste de significância.
-- O resumo é feito pela aplicação; a delegação também. O projeto não reproduz compactação nativa,
-  subagentes do Claude Code, advisor, Message Threads, MCP/A2A ou execução paralela.
+- Strategy order is shuffled per repetition, with the seed recorded. Prefixes are unique
+  to each session/role and remain stable within their histories.
+- Cache use is measured from returned counters. Turns are identified in JSONL: the first
+  is not assumed to be cold, nor are subsequent turns assumed to be cache hits.
+- `known_input_tokens` sums inputs across requests, including cache reads and writes.
+  It does not represent peak context-window size or unique tokens.
+- `task_latency_*` measures only main-agent task calls. Use `session_elapsed_p50_ms`
+  to compare the entire flow. TTFT measures time to the first text delta.
+- Cost includes calls from both roles, including failed attempts with known usage.
+  Missing usage or rates produce an unknown cost (`null`), not zero.
+- The scenario text is shared, but tokenization, answers, rates, and reasoning defaults differ.
+  Compare strategies within each provider first. This pilot is not a model ranking.
+- Three repetitions of one case do not measure generalization. A p95 based on few calls
+  is descriptive; this is neither a robust tail estimate nor a significance test.
+- Summarization and delegation are implemented by the application. The project does not
+  reproduce native compaction, Claude Code subagents, advisor, Message Threads, MCP/A2A,
+  or parallel execution.
 
 <details>
-<summary>Detalhes de cache, tarifas e contabilização</summary>
+<summary>Cache, pricing, and accounting details</summary>
 
-O adaptador OpenAI usa Responses com `prompt_cache_options.mode = "explicit"` e TTL de
-30 minutos. `full` omite breakpoints; as demais estratégias mantêm os breakpoints das
-instruções e das mensagens de usuário anteriores. É necessário um modelo/API compatível
-com esse controle explícito e com o campo de uso `cache_write_tokens`. O adaptador falha
-quando o uso obrigatório está ausente, sem converter ausência em zero ou trocar a política.
+The OpenAI adapter uses Responses with `prompt_cache_options.mode = "explicit"` and a
+30-minute TTL. `full` omits breakpoints; the other strategies retain breakpoints for the
+instructions and earlier user messages. This requires a model/API compatible with the
+explicit control and the `cache_write_tokens` usage field. The adapter fails when required
+usage is missing, without treating missing values as zero or changing the cache policy.
 
-Na Anthropic, `full` omite `cache_control`; as demais estratégias enviam cache automático
-com TTL de cinco minutos. Os TTLs são diferentes entre provedores.
-`cache_control_valid` não garante um hit: também fica falso no agregado quando há chamadas
-com erro sem validação registrada. No controle sem cache, leituras/escritas inesperadas invalidam o controle.
+On Anthropic, `full` omits `cache_control`; the other strategies send automatic caching
+with a five-minute TTL. TTLs differ between providers.
+`cache_control_valid` does not guarantee a hit: the aggregate is also false when calls
+fail without a recorded validation. In the uncached control, unexpected reads/writes
+invalidate the control.
 
-`[rates]` precifica o principal e o subagente de mesmo modelo. `[subagent.rates]` precifica
-o modelo alternativo. São quatro tarifas em USD por milhão de tokens, mais a data `as_of`:
+`[rates]` prices the main agent and the subagent using the same model. `[subagent.rates]`
+prices the alternative model. There are four rates in USD per million tokens, plus an
+`as_of` date:
 
 ```text
-custo = (entrada comum × tarifa de entrada
-       + leitura de cache × tarifa de leitura
-       + escrita de cache × tarifa de escrita
-       + saída × tarifa de saída) / 1.000.000
+cost = (ordinary input × input rate
+      + cache reads × read rate
+      + cache writes × write rate
+      + output × output rate) / 1,000,000
 ```
 
-A tarifa de escrita é o preço total, não uma sobretaxa. O cálculo usa apenas as tarifas
-configuradas; não ajusta faixas de contexto, batch, descontos contratuais ou ferramentas.
-Consulte nos TOMLs as faixas e datas associadas aos exemplos antes de reutilizá-los.
+The write rate is the total price, not a surcharge. Calculations use only the configured
+rates; they do not adjust for context-length tiers, batch pricing, contractual discounts,
+or tools. Check the tiers and dates documented in the TOML examples before reusing them.
 
-Na Anthropic, a entrada total soma entrada comum, leitura e criação de cache. Na OpenAI,
-leituras e escritas já fazem parte de `input_tokens` e são subtraídas para obter entrada comum.
-Tokens de raciocínio já faturados em saída não são adicionados novamente.
+On Anthropic, total input is the sum of ordinary input, cache reads, and cache creation.
+On OpenAI, reads and writes are already included in `input_tokens` and are subtracted
+to obtain ordinary input. Reasoning tokens already billed as output are not counted again.
 
-A latência inclui o recebimento do uso final; bytes medem o corpo serializado pelo SDK,
-sem cabeçalhos/TLS. O tempo de sessão inclui telemetria e escrita local.
+Latency includes receipt of final usage; bytes measure the body serialized by the SDK,
+excluding headers/TLS. Session time includes telemetry and local file writes.
 
 </details>
 
-## Telemetria opcional
+## Optional telemetry
 
-O projeto usa o núcleo do [a2a-otel-kit](https://github.com/brunovicco/a2a-otel-kit) para
-spans OTLP. O nome do pacote não implica uso do protocolo A2A neste benchmark.
+The project uses the core of [a2a-otel-kit](https://github.com/brunovicco/a2a-otel-kit)
+for OTLP spans. The package name does not imply use of the A2A protocol in this benchmark.
 
 ```bash
 uv sync --frozen --extra telemetry
@@ -237,13 +244,13 @@ uv run --env-file .env context-bench run \
   --otlp-endpoint http://localhost:4318/v1/traces
 ```
 
-Forneça seu próprio coletor. Os spans registram operação, papel (`component`), correlação,
-duração e resultado. A contabilização de tokens fica no JSONL, vinculada pelo trace ID.
-Prompts, notas intermediárias, headers, chaves e mensagens de exceção não são gravados.
-`--diagnostics` permite apenas o registro limitado dos campos finais descrito acima.
-Mantenha a mesma configuração de telemetria ao comparar tempos.
+Provide your own collector. Spans record operation, role (`component`), correlation,
+duration, and outcome. Token accounting stays in JSONL and is linked through the trace ID.
+Prompts, intermediate notes, headers, keys, and exception messages are not recorded.
+`--diagnostics` allows only the limited recording of final fields described above.
+Keep telemetry settings the same when comparing timings.
 
-## Desenvolvimento
+## Development
 
 ```bash
 uv sync --frozen --all-extras --all-groups
@@ -251,13 +258,14 @@ uv run python scripts/quality_gate.py
 uv build
 ```
 
-O quality gate verifica lockfile, lint, formatação, arquitetura, tipos, testes, segurança
-e dependências. Os testes usam provedores simulados para verificar isolamento, cronologia,
-contabilização, falhas e diagnóstico. A qualidade dos modelos depende dos experimentos reais.
+The quality gate checks the lockfile, lint, formatting, architecture, types, tests, security,
+and dependencies. Tests use simulated providers to check isolation, chronology, accounting,
+failures, and diagnostics. Model quality must be measured through live experiments.
 
-O projeto deriva do [codex-python-engineering-harness](https://github.com/brunovicco/codex-python-engineering-harness),
-perfil `library`, versão 1.2.1. A origem está registrada em `.harness.json`.
-Mantém layout `src`, SDKs oficiais e CLI pequena. Código sob [licença MIT](LICENSE).
+This project derives from [codex-python-engineering-harness](https://github.com/brunovicco/codex-python-engineering-harness),
+`library` profile, version 1.2.1. Its origin is recorded in `.harness.json`.
+It keeps a `src` layout, official SDKs, and a small CLI. Code is released under the [MIT license](LICENSE).
 
-Próxima extensão útil: acrescentar cenários com correções conflitantes e evidências essenciais
-mais difíceis de resumir, para avaliar se a economia permanece quando preservar informação é mais exigente.
+A useful next extension is to add scenarios with conflicting corrections and essential
+evidence that is harder to summarize, to see whether savings persist when preserving
+information becomes more demanding.
