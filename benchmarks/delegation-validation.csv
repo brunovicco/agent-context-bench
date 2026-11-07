@@ -1,0 +1,7 @@
+provider,source_run,strategy,sessions,passed,calls,usage_complete,cache_control_valid,total_cost_usd,cost_per_passed_task_usd,session_elapsed_p50_ms,known_input_tokens,main_known_input_tokens,subagent_known_input_tokens,cache_read_fraction,main_cost_usd,subagent_cost_usd
+openai,openai-delegation-validation-01,cache,3,3,18,True,True,0.2543148,0.0847716,9752.851208999346,155834,155834,0,0.7502983944453714,0.2543148,0
+openai,openai-delegation-validation-01,delegate_same_model,3,3,33,True,True,0.3348034,0.11160113333333332,19585.547124996083,130050,12137,117913,0.6034678969627066,0.072296,0.2625074
+openai,openai-delegation-validation-01,delegate_small_model,3,3,33,True,True,0.0679741,0.02265803333333333,19377.59145900054,127808,10534,117274,0.611346707561342,0.061516,0.0064581
+anthropic,anthropic-delegation-validation-01,cache,3,3,18,True,True,0.2193878,0.07312926666666666,10212.90304199647,284642,284642,0,0.7494080283303237,0.2193878,0
+anthropic,anthropic-delegation-validation-01,delegate_same_model,3,3,33,True,True,0.3311709,0.1103903,32692.624041003,258769,39866,218903,0.6745166538495724,0.06777419999999999,0.2633967
+anthropic,anthropic-delegation-validation-01,delegate_small_model,3,3,33,True,True,0.07409805,0.02469935,24280.76387499459,259860,40556,219304,0.6741976448857077,0.0590952,0.01500285
