@@ -47,7 +47,10 @@ def test_otlp_receipt_and_exception_privacy(monkeypatch: pytest.MonkeyPatch) -> 
     try:
         with telemetry.span("task", "run-safe") as trace:
             assert trace is not None and len(trace) == 32
-        with pytest.raises(ValueError, match="PRIVATE"), telemetry.span("summary", "run-safe"):
+        with (
+            pytest.raises(ValueError, match="PRIVATE"),
+            telemetry.span("delegate", "run-safe", "subagent"),
+        ):
             raise ValueError("PRIVATE_PROMPT_AND_CREDENTIAL")
         telemetry.close()
     finally:
@@ -69,4 +72,10 @@ def test_otlp_receipt_and_exception_privacy(monkeypatch: pytest.MonkeyPatch) -> 
     assert all(b"PRIVATE" not in payload for payload in received)
     assert any(
         a.key == "outcome" and a.value.string_value == "error" for s in spans for a in s.attributes
+    )
+
+    assert any(
+        a.key == "component" and a.value.string_value == "subagent"
+        for s in spans
+        for a in s.attributes
     )

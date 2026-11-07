@@ -2,12 +2,13 @@
 
 import math
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
-type Strategy = Literal["full", "cache", "summary"]
+type Strategy = Literal["full", "cache", "summary", "delegate_same_model", "delegate_small_model"]
 STRATEGIES: tuple[Strategy, ...] = ("full", "cache", "summary")
+DELEGATION_STRATEGIES: tuple[Strategy, ...] = ("delegate_same_model", "delegate_small_model")
 
 
 @dataclass(frozen=True)
@@ -81,8 +82,21 @@ class Reply:
 
 
 @dataclass(frozen=True)
+class SubagentConfig:
+    """Optional cheaper model on the same provider, with independent prices."""
+
+    model: str
+    rates: Rates | None = None
+
+    def __post_init__(self) -> None:
+        """Reject an empty worker model before any API call."""
+        if not self.model.strip():
+            raise ValueError("Choose a nonempty subagent model")
+
+
+@dataclass(frozen=True)
 class Config:
-    """One provider/model per invocation, with explicit bounds."""
+    """One provider, a main model and an optional cheaper worker model."""
 
     provider: Literal["openai", "anthropic"]
     model: str
@@ -93,6 +107,7 @@ class Config:
     seed: int = 42
     rates: Rates | None = None
     strategies: tuple[Strategy, ...] = field(default=STRATEGIES)
+    subagent: SubagentConfig | None = None
 
     def __post_init__(self) -> None:
         """Fail configuration before any network access."""
@@ -106,10 +121,28 @@ class Config:
             raise ValueError("max_output_tokens must be between 256 and 16384")
         if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be finite and positive")
-        if not self.strategies or any(s not in STRATEGIES for s in self.strategies):
-            raise ValueError("strategies must contain full, cache or summary")
+        if not self.strategies or any(
+            s not in (*STRATEGIES, *DELEGATION_STRATEGIES) for s in self.strategies
+        ):
+            raise ValueError("Unknown or empty strategies")
         if len(set(self.strategies)) != len(self.strategies):
             raise ValueError("Duplicate strategies")
+        if "delegate_small_model" in self.strategies and (
+            self.subagent is None or self.subagent.model == self.model
+        ):
+            raise ValueError("delegate_small_model needs a different subagent.model")
+
+    def worker_config(self) -> "Config":
+        """Reuse cache/timeout/output settings without inheriting main-model prices."""
+        if self.subagent is None:
+            raise ValueError("Missing subagent configuration")
+        return replace(
+            self,
+            model=self.subagent.model,
+            rates=self.subagent.rates,
+            strategies=("cache",),
+            subagent=None,
+        )
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -118,6 +151,11 @@ class Config:
             data = tomllib.load(stream)
         if "rates" in data:
             data["rates"] = Rates(**data["rates"])
+        if "subagent" in data:
+            worker = data["subagent"]
+            if "rates" in worker:
+                worker["rates"] = Rates(**worker["rates"])
+            data["subagent"] = SubagentConfig(**worker)
         if "strategies" in data:
             data["strategies"] = tuple(data["strategies"])
         return cls(**data)

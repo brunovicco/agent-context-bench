@@ -18,7 +18,7 @@ class Telemetry:
             self.observability = Observability.configure(
                 ObservabilitySettings(
                     service_name="agent-context-bench",
-                    service_version="0.1.0",
+                    service_version="0.2.0",
                     environment="benchmark",
                     enabled=True,
                     otlp_endpoint=endpoint,
@@ -26,7 +26,7 @@ class Telemetry:
             )
 
     @contextmanager
-    def span(self, operation: str, run_id: str) -> Iterator[str | None]:
+    def span(self, operation: str, run_id: str, agent_role: str = "main") -> Iterator[str | None]:
         """Emit fixed metadata, omitting exception descriptions and payloads."""
         if self.observability is None:
             yield None
@@ -34,7 +34,7 @@ class Telemetry:
         with self.observability.start_span(
             "context_bench.call",
             record_exception=False,
-            attributes={"operation": operation, "correlation_id": run_id},
+            attributes={"operation": operation, "correlation_id": run_id, "component": agent_role},
         ) as span:
             started = perf_counter()
             try:

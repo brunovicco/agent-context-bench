@@ -11,10 +11,14 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from agent_context_bench.models import Config, Message, Reply, Strategy
+from agent_context_bench.models import DELEGATION_STRATEGIES, Config, Message, Reply, Strategy
 from agent_context_bench.providers import Provider
 from agent_context_bench.scenario import (
+    DELEGATE_HANDOFF,
     TURNS,
+    answer_diagnostics,
+    delegate_system_prompt,
+    delegation_prompt_digest,
     evaluate,
     scenario_digest,
     summary_request,
@@ -55,9 +59,17 @@ def record_call(
 ) -> Reply:
     """Record observed usage on success or unknown accounting on failure."""
     started = perf_counter()
-    row = {**metadata, "synthetic": demo, "cache_requested": cache}
+    row = {
+        "agent_role": "main",
+        **metadata,
+        "requested_model": config.model,
+        "synthetic": demo,
+        "cache_requested": cache,
+    }
     try:
-        with telemetry.span(str(metadata["operation"]), str(metadata["session_id"])) as trace:
+        with telemetry.span(
+            str(metadata["operation"]), str(metadata["session_id"]), str(row["agent_role"])
+        ) as trace:
             row["trace_id"] = trace
             reply = provider.generate(system, messages, cache=cache)
     except (Exception, KeyboardInterrupt) as exc:
@@ -92,11 +104,17 @@ def run(
     telemetry: Telemetry,
     *,
     demo: bool,
+    subagent_provider: Provider | None = None,
+    diagnostics: bool = False,
 ) -> bool:
     """Run paired randomized blocks; stop on API errors and retain partial results."""
+    if "delegate_small_model" in config.strategies and subagent_provider is None:
+        raise ValueError("Missing subagent provider")
     directory.mkdir(parents=True, exist_ok=False)
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "diagnostics_enabled": diagnostics,
+        "package_version": version("agent-context-bench"),
         "synthetic": demo,
         "started_at": datetime.now(UTC).isoformat(),
         "config": asdict(config),
@@ -105,6 +123,8 @@ def run(
         "strategy_order": [],
         "status": "running",
     }
+    if any(s in DELEGATION_STRATEGIES for s in config.strategies):
+        manifest["delegation_prompt_sha256"] = delegation_prompt_digest()
     order_log: list[list[str]] = []
     manifest["strategy_order"] = order_log
     manifest_path = directory / "manifest.json"
@@ -118,7 +138,17 @@ def run(
             rng.shuffle(order)
             order_log.append(list(order))
             for strategy in order:
-                run_session(config, provider, directory, telemetry, strategy, repetition, demo=demo)
+                run_session(
+                    config,
+                    provider,
+                    directory,
+                    telemetry,
+                    strategy,
+                    repetition,
+                    demo=demo,
+                    subagent_provider=subagent_provider,
+                    diagnostics=diagnostics,
+                )
         completed = True
         manifest["status"] = "completed"
     except KeyboardInterrupt:
@@ -142,12 +172,25 @@ def run_session(
     repetition: int,
     *,
     demo: bool,
+    subagent_provider: Provider | None = None,
+    diagnostics: bool = False,
 ) -> None:
-    """Replace old turns once with a paid summary, preserving only observed evidence."""
+    """Replay six turns with full history, one summary, or one isolated evidence worker."""
     session_id = uuid4().hex
     system = system_prompt(session_id)
     messages: list[Message] = []
+    delegated = strategy in DELEGATION_STRATEGIES
+    worker = provider
+    worker_config = config
+    if strategy == "delegate_small_model":
+        if subagent_provider is None:
+            raise ValueError("Missing subagent provider")
+        worker = subagent_provider
+        worker_config = config.worker_config()
+    worker_messages: list[Message] = []
+    worker_system = delegate_system_prompt(session_id)
     checks: dict[str, bool] = {}
+    diagnostic_fields: dict[str, object] = {}
     started = perf_counter()
     base = {
         "session_id": session_id,
@@ -180,7 +223,28 @@ def run_session(
                     ),
                     Message("assistant", "I will preserve these facts and constraints."),
                 ]
-            messages.append(Message("user", turn_text(index)))
+            incoming = turn_text(index)
+            if delegated and index < len(TURNS) - 1:
+                # A single stateful worker sees only evidence already released.
+                # The main agent never receives the raw diagnostic records.
+                worker_messages.append(Message("user", incoming))
+                evidence = record_call(
+                    worker,
+                    worker_config,
+                    telemetry,
+                    directory,
+                    {**base, "turn": index, "operation": "delegate", "agent_role": "subagent"},
+                    worker_system,
+                    worker_messages,
+                    cache=True,
+                    demo=demo,
+                )
+                if not evidence.complete or not evidence.text.strip():
+                    status = "incomplete"
+                    return
+                worker_messages.append(Message("assistant", evidence.text))
+                incoming = DELEGATE_HANDOFF + evidence.text
+            messages.append(Message("user", incoming))
             reply = record_call(
                 provider,
                 config,
@@ -198,6 +262,8 @@ def run_session(
             messages.append(Message("assistant", reply.text))
             if index == len(TURNS) - 1:
                 checks = evaluate(reply.text)
+                if diagnostics:
+                    diagnostic_fields["answer_diagnostics"] = answer_diagnostics(reply.text)
         status = "completed"
     finally:
         append_json(
@@ -207,6 +273,7 @@ def run_session(
                 "synthetic": demo,
                 "status": status,
                 "checks": checks,
+                **diagnostic_fields,
                 "passed": status == "completed" and bool(checks) and all(checks.values()),
                 "elapsed_ms": (perf_counter() - started) * 1000,
             },
@@ -230,6 +297,26 @@ def percentile(values: list[float], fraction: float) -> float | None:
     lower = int(position)
     upper = min(lower + 1, len(ordered) - 1)
     return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+
+
+def role_metrics(calls: list[dict[str, Any]], role: str) -> dict[str, Any]:
+    """Split observed usage and costs without turning unpriced worker calls into zero."""
+    selected = [c for c in calls if c.get("agent_role", "main") == role]
+    usage = [c["usage"] for c in selected if c.get("usage") is not None]
+    total_input = sum(u["ordinary"] + u["cache_read"] + u["cache_write"] for u in usage)
+    costs = [c.get("cost_usd") for c in selected]
+    return {
+        f"{role}_calls": len(selected),
+        f"{role}_known_input_tokens": total_input,
+        f"{role}_known_output_tokens": sum(u["output"] for u in usage),
+        f"{role}_usage_complete": len(usage) == len(selected),
+        f"{role}_cache_read_fraction": sum(u["cache_read"] for u in usage) / total_input
+        if total_input
+        else None,
+        f"{role}_cost_usd": sum(c for c in costs if c is not None)
+        if all(c is not None for c in costs)
+        else None,
+    }
 
 
 def write_report(directory: Path) -> list[dict[str, Any]]:
@@ -277,6 +364,8 @@ def write_report(directory: Path) -> list[dict[str, Any]]:
                 "cost_per_passed_task_usd": total_cost / passed
                 if total_cost is not None and passed
                 else None,
+                **role_metrics(selected, "main"),
+                **role_metrics(selected, "subagent"),
             }
         )
     if rows:

@@ -10,7 +10,9 @@ README.md owns usage, methodology, limitations and source links.
 - Do not use `from __future__ import annotations`.
 - Test accounting, experiment isolation, provider payloads and failure recovery.
 - No paid API calls in tests. Live experiments require explicit `--live`.
-- Never log prompts, answers, headers, API keys, exception messages or hidden reasoning.
+- Never log prompts, raw answers, headers, API keys, exception messages or hidden reasoning.
+  Explicit `--diagnostics` may save only bounded evaluated final JSON fields from the
+  synthetic incident in sessions.jsonl; it is off by default.
 - Missing costs are null, not zero. Cache hits must be observed.
 - Demo results are synthetic and must not support performance claims.
 - Do not publish or modify upstream repositories without a request.

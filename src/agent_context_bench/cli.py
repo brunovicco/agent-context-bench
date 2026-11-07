@@ -21,6 +21,11 @@ def main(argv: list[str] | None = None) -> int:
     live.add_argument("--config", type=Path, required=True)
     live.add_argument("--output", type=Path, required=True)
     live.add_argument("--live", action="store_true", help="Allow billable API requests")
+    live.add_argument(
+        "--diagnostics",
+        action="store_true",
+        help="Save bounded final JSON fields from the synthetic incident to sessions.jsonl",
+    )
     live.add_argument("--otlp-endpoint", help="Optional OTLP/HTTP traces endpoint")
     report = sub.add_parser("report", help="Regenerate a CSV from existing local results")
     report.add_argument("directory", type=Path)
@@ -29,6 +34,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("run requires --live; use demo for an offline execution")
     telemetry: Telemetry | None = None
     provider: LiveProvider | None = None
+    subagent_provider: LiveProvider | None = None
     try:
         if args.command == "report":
             if not (args.directory / "manifest.json").exists():
@@ -45,7 +51,17 @@ def main(argv: list[str] | None = None) -> int:
             config = Config.load(args.config)
             telemetry = Telemetry(args.otlp_endpoint)
             provider = LiveProvider(config)
-            ok = run(config, provider, args.output, telemetry, demo=False)
+            if "delegate_small_model" in config.strategies:
+                subagent_provider = LiveProvider(config.worker_config())
+            ok = run(
+                config,
+                provider,
+                args.output,
+                telemetry,
+                demo=False,
+                subagent_provider=subagent_provider,
+                diagnostics=args.diagnostics,
+            )
         print(f"{'Completed' if ok else 'Stopped; inspect manifest.json'}: {args.output}")
         return 0 if ok else 1
     except Exception as exc:
@@ -56,6 +72,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     finally:
+        if subagent_provider is not None:
+            subagent_provider.close()
         if provider is not None:
             provider.close()
         if telemetry is not None:
