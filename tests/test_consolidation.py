@@ -193,3 +193,89 @@ def test_duplicate_inputs_and_existing_output_are_rejected_without_overwrite(
     assert main(["consolidate", str(directory), "--output", str(output)]) == 1
     assert output.read_bytes() == b"keep\n"
     assert "FileExistsError" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "task_passed",
+        "notes_passed",
+        "status_updates_passed",
+        "passed",
+        "integer_flag",
+        "status_check",
+        "note_check",
+        "missing_checks",
+        "empty_checks",
+        "nonboolean_checks",
+        "empty_final_checks",
+        "later_malformed_note",
+    ],
+)
+def test_inconsistent_quality_metadata_is_rejected(tmp_path: Path, damage: str) -> None:
+    directory = make_run(tmp_path / "source")
+    calls = read_rows(directory / "calls.jsonl")
+    sessions = read_rows(directory / "sessions.jsonl")
+    session = next(s for s in sessions if s["strategy"] == "status_notes_same_model")
+    selected = [c for c in calls if c["session_id"] == session["session_id"]]
+    statuses = [c for c in selected if c["operation"] == "status"]
+    notes = [c for c in selected if c["operation"] == "status_notes"]
+    if damage in ("task_passed", "notes_passed", "passed"):
+        session[damage] = False
+    elif damage == "status_updates_passed":
+        session[damage] = 500  # Must not export a pass rate greater than one.
+    elif damage == "integer_flag":
+        session["passed"] = 1
+    elif damage == "status_check":
+        statuses[0]["checks"]["approval_required"] = False
+    elif damage == "note_check":
+        notes[0]["checks"]["word_limit"] = False
+    elif damage == "missing_checks":
+        del statuses[0]["checks"]
+    elif damage == "empty_checks":
+        statuses[0]["checks"] = {}
+    elif damage == "nonboolean_checks":
+        statuses[0]["checks"]["text"] = "PRIVATE"
+    elif damage == "empty_final_checks":
+        session["checks"] = {}
+    else:
+        notes[0]["checks"]["word_limit"] = False
+        notes[1]["checks"] = {}
+        session.update(notes_passed=False, passed=False)
+    rewrite(directory / "calls.jsonl", calls)
+    rewrite(directory / "sessions.jsonl", sessions)
+    before = {p: p.read_bytes() for p in directory.iterdir()}
+    output = tmp_path / "invalid.csv"
+    with pytest.raises(ValueError):
+        consolidate_status([directory], output)
+    assert not output.exists()
+    assert all(p.read_bytes() == content for p, content in before.items())
+
+
+@pytest.mark.parametrize("failed", ["task", "status"])
+def test_consistent_failed_checks_export_without_savings(tmp_path: Path, failed: str) -> None:
+    directory = make_run(tmp_path / "source")
+    calls = read_rows(directory / "calls.jsonl")
+    sessions = read_rows(directory / "sessions.jsonl")
+    session = next(s for s in sessions if s["strategy"] == "status_notes_same_model")
+    session["passed"] = False
+    if failed == "task":
+        session["checks"]["cause"] = False
+        session["task_passed"] = False
+    else:
+        call = next(
+            c
+            for c in calls
+            if c["session_id"] == session["session_id"] and c["operation"] == "status"
+        )
+        call["checks"]["approval_required"] = False
+        session["status_updates_passed"] -= 1
+    rewrite(directory / "calls.jsonl", calls)
+    rewrite(directory / "sessions.jsonl", sessions)
+    output = tmp_path / "failed.csv"
+    consolidate_status([directory], output)
+    with output.open() as stream:
+        row = next(r for r in csv.DictReader(stream) if r["strategy"] == "status_notes_same_model")
+    assert row["passed"] == "0" and row["session_savings_fraction"] == "null"
+    assert row["status_updates_passed"] == ("4" if failed == "status" else "5")
+    assert row["task_passed"] == ("0" if failed == "task" else "1")

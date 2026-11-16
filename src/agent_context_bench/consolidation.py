@@ -52,6 +52,47 @@ STATUS_COLUMNS = (
 )
 
 
+def checks_passed(checks: object) -> bool:
+    """Read a recorded verdict only from a nonempty dictionary of boolean checks."""
+    if (
+        not isinstance(checks, dict)
+        or not checks
+        or any(type(value) is not bool for value in checks.values())
+    ):
+        raise ValueError("Missing or malformed recorded checks")
+    return all(checks.values())
+
+
+def validate_quality_counts(calls: list[dict[str, Any]], sessions: list[dict[str, Any]]) -> None:
+    """Cross-check saved aggregates without reevaluating discarded response text."""
+    for session in sessions:
+        selected = [call for call in calls if call["session_id"] == session["session_id"]]
+        status_passed = sum(
+            checks_passed(call.get("checks")) for call in selected if call["operation"] == "status"
+        )
+        # Evaluate every note's metadata, even after a prior note failed.
+        note_verdicts = [
+            checks_passed(call.get("checks"))
+            for call in selected
+            if call["operation"] == "status_notes"
+        ]
+        notes_passed = all(note_verdicts)
+        task_passed = checks_passed(session.get("checks"))
+        expected = {
+            "task_passed": task_passed,
+            "notes_passed": notes_passed,
+            "status_updates_passed": status_passed,
+            "passed": task_passed
+            and notes_passed
+            and status_passed == session["status_updates_expected"],
+        }
+        if any(
+            type(session.get(key)) is not type(value) or session[key] != value
+            for key, value in expected.items()
+        ):
+            raise ValueError("Session quality counts disagree with recorded checks")
+
+
 def validate_status_run(
     manifest: dict[str, Any], calls: list[dict[str, Any]], sessions: list[dict[str, Any]]
 ) -> None:
@@ -110,6 +151,7 @@ def validate_status_run(
         )
     if actual_calls != expected_calls:
         raise ValueError("Missing or duplicate scheduled calls")
+    validate_quality_counts(calls, sessions)
 
 
 def consolidate_status(directories: list[Path], output: Path) -> int:

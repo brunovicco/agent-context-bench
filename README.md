@@ -341,9 +341,10 @@ diff -u benchmarks/status-validation.csv /tmp/status-validation-recomputed.csv
 The output path must be new. `consolidate` reads schema-3 live status runs and validates
 completed manifests, planned repetitions, session associations, and the full task/note/status
 call schedule. Missing files, interrupted runs, incomplete responses, and missing or duplicate
-scheduled calls fail before creating the CSV. Existing source files, including `summary.csv`,
-are never rewritten. Every run keeps its own baseline, provider, update count, model aliases,
-and hashes; runs are not pooled, even when supplied in the same command. Completed sessions
+scheduled calls fail before creating the CSV. Session approval flags and status pass counts
+must agree with the saved boolean checks; contradictory or malformed quality metadata is
+rejected. Existing source files, including `summary.csv`, are never rewritten. Every run keeps
+its own baseline, provider, update count, model aliases, and hashes; runs are not pooled, even when supplied in the same command. Completed sessions
 with failed quality checks can be exported, with no savings claimed for those conditions.
 Unknown costs are written as `null`. This reuses recorded costs and evaluation results;
 it does not reprice calls or reevaluate answers that were never retained.

@@ -352,8 +352,10 @@ O caminho de saída deve ser novo. `consolidate` lê execuções reais de status
 valida manifestos concluídos, repetições previstas, associações de sessões e toda a sequência
 de chamadas da tarefa/notas/status. Arquivos ausentes, lotes interrompidos, respostas
 incompletas e chamadas previstas ausentes ou duplicadas falham antes da criação do CSV.
-Arquivos de origem existentes, inclusive `summary.csv`, nunca são reescritos. Cada execução
-mantém seu próprio controle, provedor, quantidade de atualizações, aliases e hashes; não há
+Os indicadores de aprovação das sessões e as contagens de status aprovados devem concordar
+com os checks booleanos salvos; metadados de qualidade contraditórios ou malformados são
+recusados. Arquivos de origem existentes, inclusive `summary.csv`, nunca são reescritos.
+Cada execução mantém seu próprio controle, provedor, quantidade de atualizações, aliases e hashes; não há
 agrupamento entre execuções, mesmo fornecidas no mesmo comando. Sessões concluídas com
 checks de qualidade reprovados podem ser exportadas, sem alegar economia nessas condições.
 Custos desconhecidos são escritos como `null`. O comando reutiliza custos e avaliações
