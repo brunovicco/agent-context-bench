@@ -18,7 +18,7 @@ class Telemetry:
             self.observability = Observability.configure(
                 ObservabilitySettings(
                     service_name="agent-context-bench",
-                    service_version="0.2.0",
+                    service_version="0.3.0",
                     environment="benchmark",
                     enabled=True,
                     otlp_endpoint=endpoint,

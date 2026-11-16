@@ -6,9 +6,24 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
-type Strategy = Literal["full", "cache", "summary", "delegate_same_model", "delegate_small_model"]
+type Strategy = Literal[
+    "full",
+    "cache",
+    "summary",
+    "delegate_same_model",
+    "delegate_small_model",
+    "status_full_history",
+    "status_notes_same_model",
+    "status_notes_small_model",
+]
 STRATEGIES: tuple[Strategy, ...] = ("full", "cache", "summary")
 DELEGATION_STRATEGIES: tuple[Strategy, ...] = ("delegate_same_model", "delegate_small_model")
+STATUS_STRATEGIES: tuple[Strategy, ...] = (
+    "status_full_history",
+    "status_notes_same_model",
+    "status_notes_small_model",
+)
+SMALL_MODEL_STRATEGIES: tuple[Strategy, ...] = ("delegate_small_model", "status_notes_small_model")
 
 
 @dataclass(frozen=True)
@@ -108,6 +123,7 @@ class Config:
     rates: Rates | None = None
     strategies: tuple[Strategy, ...] = field(default=STRATEGIES)
     subagent: SubagentConfig | None = None
+    status_updates_per_turn: int = 1
 
     def __post_init__(self) -> None:
         """Fail configuration before any network access."""
@@ -122,15 +138,21 @@ class Config:
         if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be finite and positive")
         if not self.strategies or any(
-            s not in (*STRATEGIES, *DELEGATION_STRATEGIES) for s in self.strategies
+            s not in (*STRATEGIES, *DELEGATION_STRATEGIES, *STATUS_STRATEGIES)
+            for s in self.strategies
         ):
             raise ValueError("Unknown or empty strategies")
         if len(set(self.strategies)) != len(self.strategies):
             raise ValueError("Duplicate strategies")
-        if "delegate_small_model" in self.strategies and (
+        if (
+            type(self.status_updates_per_turn) is not int
+            or not 1 <= self.status_updates_per_turn <= 20
+        ):
+            raise ValueError("status_updates_per_turn must be an integer between 1 and 20")
+        if any(s in SMALL_MODEL_STRATEGIES for s in self.strategies) and (
             self.subagent is None or self.subagent.model == self.model
         ):
-            raise ValueError("delegate_small_model needs a different subagent.model")
+            raise ValueError("The cheaper-model strategy needs a different subagent.model")
 
     def worker_config(self) -> "Config":
         """Reuse cache/timeout/output settings without inheriting main-model prices."""

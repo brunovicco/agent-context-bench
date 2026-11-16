@@ -3,6 +3,7 @@
 import csv
 import json
 import random
+from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
 from importlib.metadata import version
@@ -11,7 +12,15 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from agent_context_bench.models import DELEGATION_STRATEGIES, Config, Message, Reply, Strategy
+from agent_context_bench.models import (
+    DELEGATION_STRATEGIES,
+    SMALL_MODEL_STRATEGIES,
+    STATUS_STRATEGIES,
+    Config,
+    Message,
+    Reply,
+    Strategy,
+)
 from agent_context_bench.providers import Provider
 from agent_context_bench.scenario import (
     DELEGATE_HANDOFF,
@@ -24,6 +33,17 @@ from agent_context_bench.scenario import (
     summary_request,
     system_prompt,
     turn_text,
+)
+from agent_context_bench.status_updates import (
+    NOTES_SYSTEM,
+    STATUS_SYSTEM,
+    evaluate_notes,
+    evaluate_status,
+    notes_request,
+    notes_text_diagnostics,
+    status_prompt_digest,
+    status_request,
+    status_text_diagnostics,
 )
 from agent_context_bench.telemetry import Telemetry
 
@@ -56,6 +76,7 @@ def record_call(
     *,
     cache: bool,
     demo: bool,
+    evaluator: Callable[[str], dict[str, bool]] | None = None,
 ) -> Reply:
     """Record observed usage on success or unknown accounting on failure."""
     started = perf_counter()
@@ -93,6 +114,12 @@ def record_call(
         cost_usd=None if demo else reply.usage.cost(config.rates),
         cache_control_valid=cache or (reply.usage.cache_read == reply.usage.cache_write == 0),
     )
+    if evaluator is not None:
+        row["checks"] = evaluator(reply.text)
+    if metadata["operation"] == "status":
+        row["status_text_diagnostics"] = status_text_diagnostics(reply.text)
+    elif metadata["operation"] == "status_notes":
+        row["notes_text_diagnostics"] = notes_text_diagnostics(reply.text)
     append_json(directory / "calls.jsonl", row)
     return reply
 
@@ -108,11 +135,11 @@ def run(
     diagnostics: bool = False,
 ) -> bool:
     """Run paired randomized blocks; stop on API errors and retain partial results."""
-    if "delegate_small_model" in config.strategies and subagent_provider is None:
+    if any(s in SMALL_MODEL_STRATEGIES for s in config.strategies) and subagent_provider is None:
         raise ValueError("Missing subagent provider")
     directory.mkdir(parents=True, exist_ok=False)
     manifest = {
-        "schema_version": 2,
+        "schema_version": 3,
         "diagnostics_enabled": diagnostics,
         "package_version": version("agent-context-bench"),
         "synthetic": demo,
@@ -125,6 +152,10 @@ def run(
     }
     if any(s in DELEGATION_STRATEGIES for s in config.strategies):
         manifest["delegation_prompt_sha256"] = delegation_prompt_digest()
+    if any(s in STATUS_STRATEGIES for s in config.strategies):
+        manifest["status_prompt_sha256"] = status_prompt_digest()
+        manifest["status_schedule"] = "after_each_of_five_evidence_turns_no_wall_clock_wait"
+        manifest["status_updates_per_turn"] = config.status_updates_per_turn
     order_log: list[list[str]] = []
     manifest["strategy_order"] = order_log
     manifest_path = directory / "manifest.json"
@@ -191,6 +222,10 @@ def run_session(
     worker_system = delegate_system_prompt(session_id)
     checks: dict[str, bool] = {}
     diagnostic_fields: dict[str, object] = {}
+    observing = strategy in STATUS_STRATEGIES
+    notes = ""
+    notes_passed = True
+    status_checks: list[dict[str, bool]] = []
     started = perf_counter()
     base = {
         "session_id": session_id,
@@ -260,12 +295,33 @@ def run_session(
                 status = "incomplete"
                 return
             messages.append(Message("assistant", reply.text))
+            if observing and index < len(TURNS) - 1:
+                notes, notes_ok, complete = observe_status(
+                    config,
+                    provider,
+                    subagent_provider,
+                    directory,
+                    telemetry,
+                    base,
+                    index,
+                    messages,
+                    notes,
+                    status_checks,
+                    demo=demo,
+                )
+                notes_passed = notes_passed and notes_ok
+                if not complete:
+                    status = "incomplete"
+                    return
             if index == len(TURNS) - 1:
                 checks = evaluate(reply.text)
                 if diagnostics:
                     diagnostic_fields["answer_diagnostics"] = answer_diagnostics(reply.text)
         status = "completed"
     finally:
+        task_passed = status == "completed" and bool(checks) and all(checks.values())
+        updates_expected = 5 * config.status_updates_per_turn if observing else 0
+        updates_passed = sum(all(c.values()) for c in status_checks)
         append_json(
             directory / "sessions.jsonl",
             {
@@ -274,10 +330,75 @@ def run_session(
                 "status": status,
                 "checks": checks,
                 **diagnostic_fields,
-                "passed": status == "completed" and bool(checks) and all(checks.values()),
+                "passed": task_passed and notes_passed and updates_passed == updates_expected,
+                "task_passed": task_passed,
+                "status_updates_expected": updates_expected,
+                "status_updates_passed": updates_passed,
+                "notes_passed": notes_passed,
                 "elapsed_ms": (perf_counter() - started) * 1000,
             },
         )
+
+
+def observe_status(
+    config: Config,
+    provider: Provider,
+    small_provider: Provider | None,
+    directory: Path,
+    telemetry: Telemetry,
+    base: dict[str, Any],
+    turn: int,
+    history: list[Message],
+    previous_notes: str,
+    checks: list[dict[str, bool]],
+    *,
+    demo: bool,
+) -> tuple[str, bool, bool]:
+    """Bill note maintenance and status calls; never feed either back into the task."""
+    notes = previous_notes
+    notes_ok = True
+    shortened = base["strategy"] != "status_full_history"
+    if shortened:
+        note_reply = record_call(
+            provider,
+            config,
+            telemetry,
+            directory,
+            {**base, "turn": turn, "operation": "status_notes", "agent_role": "notes"},
+            f"Synthetic experiment block: {base['session_id']}:notes\n{NOTES_SYSTEM}",
+            notes_request(notes, history[-2:]),
+            cache=True,
+            demo=demo,
+            evaluator=evaluate_notes,
+        )
+        notes_ok = all(evaluate_notes(note_reply.text).values())
+        if not note_reply.complete or not note_reply.text.strip():
+            return notes, False, False
+        notes = note_reply.text
+    renderer = provider
+    renderer_config = config
+    if base["strategy"] == "status_notes_small_model":
+        if small_provider is None:
+            raise ValueError("Missing status renderer provider")
+        renderer = small_provider
+        renderer_config = config.worker_config()
+    for tick in range(config.status_updates_per_turn):
+        response = record_call(
+            renderer,
+            renderer_config,
+            telemetry,
+            directory,
+            {**base, "turn": turn, "update": tick, "operation": "status", "agent_role": "status"},
+            f"Synthetic experiment block: {base['session_id']}:status\n{STATUS_SYSTEM}",
+            status_request(history, notes if shortened else None),
+            cache=True,
+            demo=demo,
+            evaluator=lambda text: evaluate_status(text, turn),
+        )
+        if not response.complete or not response.text.strip():
+            return notes, notes_ok, False
+        checks.append(evaluate_status(response.text, turn))
+    return notes, notes_ok, True
 
 
 def read_rows(path: Path) -> list[dict[str, Any]]:
@@ -319,10 +440,54 @@ def role_metrics(calls: list[dict[str, Any]], role: str) -> dict[str, Any]:
     }
 
 
+def operation_cost(calls: list[dict[str, Any]], operations: tuple[str, ...]) -> float | None:
+    """Return zero for absent operations and null for any unpriced attempt."""
+    costs = [c.get("cost_usd") for c in calls if c["operation"] in operations]
+    return sum(c for c in costs if c is not None) if all(c is not None for c in costs) else None
+
+
+def status_metrics(
+    calls: list[dict[str, Any]],
+    sessions: list[dict[str, Any]],
+    total: float | None,
+) -> dict[str, Any]:
+    """Separate rendering from note costs and include failed observations in quality counts."""
+    updates = [c for c in calls if c["operation"] == "status"]
+    successful = [c for c in updates if c["status"] == "ok"]
+    expected = sum(s.get("status_updates_expected", 0) for s in sessions)
+    passed = sum(s.get("status_updates_passed", 0) for s in sessions)
+    rendered_cost = operation_cost(calls, ("status",))
+    pipeline = operation_cost(calls, ("status_notes", "status"))
+    return {
+        "task_passed": sum(s.get("task_passed", s["passed"]) for s in sessions),
+        "status_updates_expected": expected,
+        "status_updates_passed": passed,
+        "status_pass_rate": passed / expected if expected else None,
+        "workload_cost_usd": operation_cost(calls, ("task",)),
+        "status_pipeline_cost_usd": pipeline,
+        "status_pipeline_cost_mean_usd": pipeline / len(sessions) if pipeline is not None else None,
+        "status_update_cost_mean_usd": rendered_cost / len(updates)
+        if rendered_cost is not None and updates
+        else None,
+        "status_overhead_fraction": pipeline / total
+        if pipeline is not None and total is not None and total > 0
+        else None,
+        "session_cost_mean_usd": total / len(sessions) if total is not None else None,
+        "status_latency_samples": len(successful),
+        "status_latency_p50_ms": percentile([c["latency_ms"] for c in successful], 0.5),
+        "status_latency_p95_ms": percentile([c["latency_ms"] for c in successful], 0.95),
+    }
+
+
 def write_report(directory: Path) -> list[dict[str, Any]]:
     """Aggregate this run only; missing costs never become zero or disappear."""
     calls = read_rows(directory / "calls.jsonl")
     sessions = read_rows(directory / "sessions.jsonl")
+    manifest_path = directory / "manifest.json"
+    manifest = (
+        json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    )
+    planned_sessions = manifest.get("config", {}).get("repetitions")
     rows: list[dict[str, Any]] = []
     for strategy in sorted({s["strategy"] for s in sessions}):
         selected = [c for c in calls if c["strategy"] == strategy]
@@ -366,11 +531,37 @@ def write_report(directory: Path) -> list[dict[str, Any]]:
                 else None,
                 **role_metrics(selected, "main"),
                 **role_metrics(selected, "subagent"),
+                **role_metrics(selected, "notes"),
+                **role_metrics(selected, "status"),
+                **status_metrics(selected, tasks, total_cost),
             }
         )
+    baseline = next((row for row in rows if row["strategy"] == "status_full_history"), None)
+    for row in rows:
+        comparable = (
+            manifest.get("status") == "completed"
+            and baseline is not None
+            and row["strategy"] in STATUS_STRATEGIES
+            and row["sessions"] == baseline["sessions"] == planned_sessions
+            and row["passed"] == row["sessions"]
+            and baseline["passed"] == baseline["sessions"]
+            and row["status_updates_expected"] == baseline["status_updates_expected"]
+        )
+        for name, metric in (
+            ("status_update_savings_fraction", "status_update_cost_mean_usd"),
+            ("status_pipeline_savings_fraction", "status_pipeline_cost_mean_usd"),
+            ("session_savings_fraction", "session_cost_mean_usd"),
+        ):
+            reference = baseline[metric] if baseline is not None else None
+            value = row[metric]
+            row[name] = (
+                1 - value / reference
+                if comparable and reference is not None and reference > 0 and value is not None
+                else None
+            )
     if rows:
         with (directory / "summary.csv").open("w", newline="", encoding="utf-8") as stream:
-            writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+            writer = csv.DictWriter(stream, fieldnames=list(rows[0]), lineterminator="\n")
             writer.writeheader()
             writer.writerows(rows)
     return rows

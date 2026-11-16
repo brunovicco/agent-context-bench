@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from agent_context_bench.models import Config
+from agent_context_bench.models import SMALL_MODEL_STRATEGIES, Config
 from agent_context_bench.providers import DemoProvider, LiveProvider
 from agent_context_bench.runner import run, write_report
 from agent_context_bench.telemetry import Telemetry
@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
             config = Config.load(args.config)
             telemetry = Telemetry(args.otlp_endpoint)
             provider = LiveProvider(config)
-            if "delegate_small_model" in config.strategies:
+            if any(s in SMALL_MODEL_STRATEGIES for s in config.strategies):
                 subagent_provider = LiveProvider(config.worker_config())
             ok = run(
                 config,
