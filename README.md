@@ -325,6 +325,29 @@ full semantic quality of free-text status descriptions are not evaluated.
 
 ### Reproduce reports or run a new comparison
 
+Regenerate the public CSV offline from explicitly selected local source runs, then compare
+it with the committed result:
+
+```bash
+uv run context-bench consolidate \
+  results/openai-status-length-validation-01 \
+  results/anthropic-status-length-validation-01 \
+  results/openai-status-reuse3-03 \
+  results/anthropic-status-reuse3-03 \
+  --output /tmp/status-validation-recomputed.csv
+diff -u benchmarks/status-validation.csv /tmp/status-validation-recomputed.csv
+```
+
+The output path must be new. `consolidate` reads schema-3 live status runs and validates
+completed manifests, planned repetitions, session associations, and the full task/note/status
+call schedule. Missing files, interrupted runs, incomplete responses, and missing or duplicate
+scheduled calls fail before creating the CSV. Existing source files, including `summary.csv`,
+are never rewritten. Every run keeps its own baseline, provider, update count, model aliases,
+and hashes; runs are not pooled, even when supplied in the same command. Completed sessions
+with failed quality checks can be exported, with no savings claimed for those conditions.
+Unknown costs are written as `null`. This reuses recorded costs and evaluation results;
+it does not reprice calls or reevaluate answers that were never retained.
+
 Recompute existing local reports without API calls:
 
 ```bash

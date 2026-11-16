@@ -479,14 +479,10 @@ def status_metrics(
     }
 
 
-def write_report(directory: Path) -> list[dict[str, Any]]:
-    """Aggregate this run only; missing costs never become zero or disappear."""
-    calls = read_rows(directory / "calls.jsonl")
-    sessions = read_rows(directory / "sessions.jsonl")
-    manifest_path = directory / "manifest.json"
-    manifest = (
-        json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
-    )
+def report_rows(
+    calls: list[dict[str, Any]], sessions: list[dict[str, Any]], manifest: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Aggregate one run without writing files or converting unknown costs to zero."""
     planned_sessions = manifest.get("config", {}).get("repetitions")
     rows: list[dict[str, Any]] = []
     for strategy in sorted({s["strategy"] for s in sessions}):
@@ -559,6 +555,18 @@ def write_report(directory: Path) -> list[dict[str, Any]]:
                 if comparable and reference is not None and reference > 0 and value is not None
                 else None
             )
+    return rows
+
+
+def write_report(directory: Path) -> list[dict[str, Any]]:
+    """Regenerate a run's CSV with the same accounting used by offline consolidation."""
+    manifest_path = directory / "manifest.json"
+    manifest = (
+        json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    )
+    rows = report_rows(
+        read_rows(directory / "calls.jsonl"), read_rows(directory / "sessions.jsonl"), manifest
+    )
     if rows:
         with (directory / "summary.csv").open("w", newline="", encoding="utf-8") as stream:
             writer = csv.DictWriter(stream, fieldnames=list(rows[0]), lineterminator="\n")

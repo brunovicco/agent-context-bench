@@ -1,10 +1,11 @@
-"""Small CLI: demo, run and report."""
+"""Small CLI: demo, run, report and offline status consolidation."""
 
 import argparse
 import json
 import sys
 from pathlib import Path
 
+from agent_context_bench.consolidation import consolidate_status
 from agent_context_bench.models import SMALL_MODEL_STRATEGIES, Config
 from agent_context_bench.providers import DemoProvider, LiveProvider
 from agent_context_bench.runner import run, write_report
@@ -29,6 +30,9 @@ def main(argv: list[str] | None = None) -> int:
     live.add_argument("--otlp-endpoint", help="Optional OTLP/HTTP traces endpoint")
     report = sub.add_parser("report", help="Regenerate a CSV from existing local results")
     report.add_argument("directory", type=Path)
+    consolidate = sub.add_parser("consolidate", help="Export completed live status runs offline")
+    consolidate.add_argument("directories", nargs="+", type=Path)
+    consolidate.add_argument("--output", type=Path, required=True, help="New CSV path")
     args = parser.parse_args(argv)
     if args.command == "run" and not args.live:
         parser.error("run requires --live; use demo for an offline execution")
@@ -36,6 +40,10 @@ def main(argv: list[str] | None = None) -> int:
     provider: LiveProvider | None = None
     subagent_provider: LiveProvider | None = None
     try:
+        if args.command == "consolidate":
+            count = consolidate_status(args.directories, args.output)
+            print(f"Consolidated {count} conditions: {args.output}")
+            return 0
         if args.command == "report":
             if not (args.directory / "manifest.json").exists():
                 raise ValueError("Expected a benchmark run directory")
