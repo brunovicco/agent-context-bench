@@ -1,0 +1,66 @@
+{
+  "config": {
+    "max_output_tokens": 2048,
+    "model": "claude-sonnet-5-5",
+    "provider": "anthropic",
+    "rates": {
+      "as_of": "2026-11-06",
+      "cache_read": 0.1,
+      "cache_write": 2.5,
+      "input": 2.0,
+      "output": 10.0
+    },
+    "repetitions": 3,
+    "seed": 42,
+    "status_updates_per_turn": 3,
+    "strategies": [
+      "status_full_history",
+      "status_notes_same_model",
+      "status_notes_small_model"
+    ],
+    "subagent": {
+      "model": "claude-haiku-5-5",
+      "rates": {
+        "as_of": "2026-11-06",
+        "cache_read": 0.01,
+        "cache_write": 0.125,
+        "input": 0.1,
+        "output": 0.5
+      }
+    },
+    "summary_after": 3,
+    "timeout_seconds": 60
+  },
+  "diagnostics_enabled": true,
+  "finished_at": "2026-11-16T20:30:14.210937+00:00",
+  "package_version": "0.3.0",
+  "scenario_sha256": "1fec88977685fae92acf8800484af594e3ddded0c1a74b21ecfd89fbd7561de5",
+  "schema_version": 3,
+  "sdk_versions": {
+    "anthropic": "0.125.0",
+    "openai": "2.54.0"
+  },
+  "started_at": "2026-11-16T20:21:52.823753+00:00",
+  "status": "completed",
+  "status_prompt_sha256": "ec1cbb883ff80e79b5883d0fb88ba8b47f50d8e4f4776252b776337075d2326b",
+  "status_schedule": "after_each_of_five_evidence_turns_no_wall_clock_wait",
+  "status_updates_per_turn": 3,
+  "strategy_order": [
+    [
+      "status_notes_same_model",
+      "status_full_history",
+      "status_notes_small_model"
+    ],
+    [
+      "status_notes_small_model",
+      "status_notes_same_model",
+      "status_full_history"
+    ],
+    [
+      "status_notes_same_model",
+      "status_notes_small_model",
+      "status_full_history"
+    ]
+  ],
+  "synthetic": false
+}

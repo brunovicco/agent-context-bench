@@ -1,0 +1,63 @@
+{
+  "config": {
+    "max_output_tokens": 2048,
+    "model": "gpt-5.6-sol",
+    "provider": "openai",
+    "rates": {
+      "as_of": "2026-11-06",
+      "cache_read": 0.4,
+      "cache_write": 5.0,
+      "input": 4.0,
+      "output": 20.0
+    },
+    "repetitions": 3,
+    "seed": 42,
+    "strategies": [
+      "cache",
+      "delegate_same_model",
+      "delegate_small_model"
+    ],
+    "subagent": {
+      "model": "gpt-6-luna",
+      "rates": {
+        "as_of": "2026-11-06",
+        "cache_read": 0.01,
+        "cache_write": 0.125,
+        "input": 0.1,
+        "output": 0.5
+      }
+    },
+    "summary_after": 3,
+    "timeout_seconds": 60
+  },
+  "delegation_prompt_sha256": "4b2538383ef4a2374ce6715849c299215d2878b5bbd4191b3ebee76fa955d523",
+  "diagnostics_enabled": true,
+  "finished_at": "2026-11-07T00:31:55.793567+00:00",
+  "package_version": "0.2.0",
+  "scenario_sha256": "1fec88977685fae92acf8800484af594e3ddded0c1a74b21ecfd89fbd7561de5",
+  "schema_version": 2,
+  "sdk_versions": {
+    "anthropic": "0.125.0",
+    "openai": "2.54.0"
+  },
+  "started_at": "2026-11-07T00:29:32.046690+00:00",
+  "status": "completed",
+  "strategy_order": [
+    [
+      "delegate_same_model",
+      "cache",
+      "delegate_small_model"
+    ],
+    [
+      "delegate_small_model",
+      "delegate_same_model",
+      "cache"
+    ],
+    [
+      "delegate_same_model",
+      "delegate_small_model",
+      "cache"
+    ]
+  ],
+  "synthetic": false
+}

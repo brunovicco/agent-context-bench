@@ -17,8 +17,42 @@ ficou mais caro nos dois provedores.
 chamadas reais às APIs. Todas as condições passaram em 3/3 sessões. É uma medição inicial
 de repetibilidade, sem evidência de qualidade equivalente em tarefas variadas.
 
-[Resultados](#resultados-do-piloto) · [Status](#experimento-de-atualização-de-status-v030) · [Como funciona](#como-funciona) ·
+[Cache](#cache-e-resumo-experimento-original) · [Delegação](#resultados-do-piloto) · [Status](#experimento-de-atualização-de-status-v030) · [Como funciona](#como-funciona) ·
 [Executar](#executar) · [Método](#método-e-limites) · [Desenvolvimento](#desenvolvimento)
+
+## Demonstração offline
+
+```bash
+uv sync --frozen
+uv run context-bench demo --output results/demo-NEW
+uv run python scripts/reproduce_benchmarks.py
+```
+
+O demo usa respostas fixas e não mede desempenho. O script de reprodução verifica oito
+execuções reais sanitizadas e reconstrói os três CSVs públicos sem credenciais nem APIs.
+Escolha um diretório novo para cada demo.
+
+## Cache e resumo: experimento original
+
+| Provedor | Estratégia | Total USD, 3 sessões | Economia frente a full | Mediana da sessão | Aprovação |
+|---|---|---:|---:|---:|---:|
+| openai | `cache` | 0.2576734 | 59.28% | 11.59 s | 3/3 |
+| openai | `full` | 0.6328240 | 0.00% | 9.61 s | 3/3 |
+| openai | `summary` | 0.2558794 | 59.57% | 15.38 s | 3/3 |
+| anthropic | `cache` | 0.2168504 | 62.98% | 11.70 s | 3/3 |
+| anthropic | `full` | 0.5857420 | 0.00% | 13.16 s | 3/3 |
+| anthropic | `summary` | 0.2351411 | 59.86% | 17.19 s | 3/3 |
+
+Fonte: [cache-validation.csv](benchmarks/cache-validation.csv), lotes `openai-validation-01`
+e `anthropic-validation-01`, de 2026-11-06, 57 chamadas por provedor. Cache economizou
+59,28% e 62,98% frente ao histórico sem cache. Resumo economizou apenas 0,70% frente ao
+cache na OpenAI e custou 8,43% a mais na Anthropic. Três repetições não estabelecem vantagem
+para a diferença pequena da OpenAI. O custo inclui gerar o resumo.
+
+Esses lotes usam o hash de cenário
+`883044d6839c213467631deda8879749bb35eedb36c743eacb63a2225a582c32`, anterior à revisão
+do contrato JSON. Não são agrupados com os controles posteriores de delegação/status.
+As tarifas são históricas, conforme os manifestos publicados.
 
 ## Resultados do piloto
 
@@ -63,9 +97,8 @@ Anthropic: (1 − 0,07409805 / 0,2193878) × 100 = 66,2%
 ```
 
 Os valores publicados estão em [benchmarks/delegation-validation.csv](benchmarks/delegation-validation.csv).
-O arquivo é uma transcrição dos agregados de `context-bench report` dos lotes
-`openai-delegation-validation-01` e `anthropic-delegation-validation-01`, fornecidos pelo autor.
-Os arquivos brutos e manifests dessas execuções permanecem locais e não acompanham este snapshot.
+Os agregados são reproduzíveis a partir das evidências sanitizadas versionadas em
+[benchmarks/evidence](benchmarks/evidence).
 Rodadas anteriores, com outro contrato de saída, não entram nesta tabela.
 
 ## Como funciona
@@ -104,6 +137,14 @@ Os controles foram executados novamente. Por isso, os resultados anteriores e po
 à mudança devem ser analisados como lotes distintos.
 
 ## Experimento de atualização de status (v0.3.0)
+
+![Custo médio por sessão: investigação, notas e status](benchmarks/status-cost-composition.svg)
+
+Três reutilizações por nota; compare estratégias dentro de cada provedor.
+
+
+<details>
+<summary>Metodologia, resultados e reprodução de status</summary>
 
 Este experimento compara o custo de produzir atualizações de status a partir do histórico
 completo do agente principal e de notas curtas. O principal continua executando a mesma
@@ -323,9 +364,8 @@ e nenhuma mensagem de exceção foi preservada. Atualizações ausentes após in
 são lacunas na execução prevista, não falhas de conteúdo observadas no modelo.
 Custos desconhecidos permanecem `null`.
 
-Os quatro conjuntos completos de origem estão presentes. Os resultados brutos continuam
-locais e ignorados pelo Git; o CSV público preserva a origem e métricas agregadas, sem
-prompts nem respostas brutas. Custos por tarifas configuradas não são uma conciliação
+Os quatro conjuntos completos de origem estão presentes. Os originais continuam locais e ignorados pelo Git; cópias sanitizadas de contabilização
+e avaliação estão disponíveis em [benchmarks/evidence](benchmarks/evidence). Custos por tarifas configuradas não são uma conciliação
 com a fatura. As rodadas dos provedores em `k = 3` ocorreram com nove dias de diferença;
 aliases de modelos, variação do serviço e condições de execução limitam comparações diretas.
 Os resultados não estabelecem um ranking OpenAI versus Anthropic, não reproduzem a
@@ -391,6 +431,8 @@ Em geral, as três estratégias fazem `28 + 15 × k` chamadas por repetição.
 `--diagnostics` é opcional e salva apenas campos finais avaliados e limitados desse incidente
 sintético. Confira disponibilidade dos modelos e tarifas históricas antes de qualquer
 rodada paga; não reutilize um diretório de saída existente.
+
+</details>
 
 ## Executar
 
@@ -534,7 +576,32 @@ Prompts, notas intermediárias, headers, chaves e mensagens de exceção não s�
 `--diagnostics` permite apenas o registro limitado dos campos finais descrito acima.
 Mantenha a mesma configuração de telemetria ao comparar tempos.
 
+## Evidências públicas e contribuição técnica
+
+O conjunto `benchmarks/evidence/` contém manifestos, contabilização por chamada e checks
+por sessão de oito lotes completos. Exclui prompts, respostas, `answer_diagnostics` e IDs
+de telemetria. `sha256.json` detecta alterações nos arquivos; não é uma assinatura independente.
+O script de reprodução confere uso normalizado, tarifas históricas e igualdade dos CSVs.
+Não reavalia texto descartado. Falhas históricas permanecem documentadas e nos originais locais;
+o conjunto público seleciona os lotes completos usados nas tabelas.
+
+```bash
+uv run python scripts/reproduce_benchmarks.py --output /tmp/bench-tables-NEW
+```
+
+O diretório de saída deve ser novo. Os resultados não são combinados entre hashes ou
+provedores. A contribuição específica deste projeto é o desenho dos controles, isolamento
+de contexto, contabilização dos papéis, avaliação determinística, recuperação de falhas e
+análise de amortização das notas sobre o harness de engenharia atribuído abaixo.
+
 ## Desenvolvimento
+
+Para regenerar o gráfico estático sem alterar as dependências do projeto:
+
+```bash
+uv run --no-project --with matplotlib python scripts/plot_status_costs.py
+```
+
 
 ```bash
 uv sync --frozen --all-extras --all-groups

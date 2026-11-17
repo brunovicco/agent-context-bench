@@ -1,0 +1,50 @@
+{
+  "config": {
+    "max_output_tokens": 2048,
+    "model": "gpt-5.6-sol",
+    "provider": "openai",
+    "rates": {
+      "as_of": "2026-11-06",
+      "cache_read": 0.4,
+      "cache_write": 5.0,
+      "input": 4.0,
+      "output": 20.0
+    },
+    "repetitions": 3,
+    "seed": 42,
+    "strategies": [
+      "full",
+      "cache",
+      "summary"
+    ],
+    "summary_after": 3,
+    "timeout_seconds": 60
+  },
+  "finished_at": "2026-11-06T15:34:33.715389+00:00",
+  "scenario_sha256": "883044d6839c213467631deda8879749bb35eedb36c743eacb63a2225a582c32",
+  "schema_version": 1,
+  "sdk_versions": {
+    "anthropic": "0.125.0",
+    "openai": "2.54.0"
+  },
+  "started_at": "2026-11-06T15:32:47.229137+00:00",
+  "status": "completed",
+  "strategy_order": [
+    [
+      "cache",
+      "full",
+      "summary"
+    ],
+    [
+      "summary",
+      "cache",
+      "full"
+    ],
+    [
+      "cache",
+      "summary",
+      "full"
+    ]
+  ],
+  "synthetic": false
+}
