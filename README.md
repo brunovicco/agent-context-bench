@@ -2,7 +2,7 @@
 
 **English** | [Português (Brasil)](README.pt-br.md)
 
-**How much does maintaining context cost-and when is it worth delegating work to another model?**
+**How much does maintaining context cost, and when is it worth delegating work to another model?**
 
 This project compares full conversation history, caching, summarization, delegation,
 and status updates using the OpenAI and Anthropic APIs. It measures cost, elapsed time, and final-answer
@@ -17,8 +17,42 @@ model cost more on both providers.
 and live API calls. Every condition passed in 3/3 sessions. This is an initial measurement
 of repeatability; it does not establish equivalent quality across different tasks.
 
-[Results](#pilot-results) · [Status updates](#status-update-experiment-v030) · [How it works](#how-it-works) ·
+[Cache results](#cache-and-summarization-original-experiment) · [Delegation](#pilot-results) · [Status updates](#status-update-experiment-v030) · [How it works](#how-it-works) ·
 [Run it](#run-it) · [Method](#method-and-limitations) · [Development](#development)
+
+## Offline demonstration
+
+```bash
+uv sync --frozen
+uv run context-bench demo --output results/demo-NEW
+uv run python scripts/reproduce_benchmarks.py
+```
+
+The demo uses fixed responses and does not measure performance. The reproduction script verifies
+eight sanitized live runs and rebuilds all three public CSVs without credentials or API calls.
+Use a new output directory for every demo.
+
+## Cache and summarization: original experiment
+
+| Provider | Strategy | Total USD, 3 sessions | Savings versus full | Median session time | Passed |
+|---|---|---:|---:|---:|---:|
+| openai | `cache` | 0.2576734 | 59.28% | 11.59 s | 3/3 |
+| openai | `full` | 0.6328240 | 0.00% | 9.61 s | 3/3 |
+| openai | `summary` | 0.2558794 | 59.57% | 15.38 s | 3/3 |
+| anthropic | `cache` | 0.2168504 | 62.98% | 11.70 s | 3/3 |
+| anthropic | `full` | 0.5857420 | 0.00% | 13.16 s | 3/3 |
+| anthropic | `summary` | 0.2351411 | 59.86% | 17.19 s | 3/3 |
+
+Source: [cache-validation.csv](benchmarks/cache-validation.csv), `openai-validation-01`
+and `anthropic-validation-01`, dated 2026-11-06, 57 calls per provider. Cache saved 59.28%
+and 62.98% versus uncached history. Summarization saved only 0.70% versus cache on OpenAI
+and cost 8.43% more on Anthropic. Three repetitions do not establish an advantage for
+OpenAI's small difference. Costs include generating the summary.
+
+These runs use scenario hash
+`883044d6839c213467631deda8879749bb35eedb36c743eacb63a2225a582c32`, before the JSON
+contract revision. They are not pooled with later delegation/status controls.
+Rates are historical inputs, recorded in the published manifests.
 
 ## Pilot results
 
@@ -63,9 +97,8 @@ Anthropic: (1 − 0.07409805 / 0.2193878) × 100 = 66.2%
 ```
 
 The published values are in [benchmarks/delegation-validation.csv](benchmarks/delegation-validation.csv).
-This file transcribes the `context-bench report` aggregates supplied by the author for
-`openai-delegation-validation-01` and `anthropic-delegation-validation-01`.
-The raw files and manifests from those runs remain local and are not included in this snapshot.
+Aggregates can be rebuilt from the sanitized evidence committed under
+[benchmarks/evidence](benchmarks/evidence).
 Earlier runs using a different output contract are excluded from this table.
 
 ## How it works
@@ -89,7 +122,7 @@ format without providing the answer key.
 | `delegate_small_model` | The same delegation flow, using a different model for the subagent | 11 |
 
 There is one subagent. It maintains its own history and receives only evidence that has
-already been released. Each turn, it produces notes of up to 200 words-a prompt instruction,
+already been released. Each turn, it produces notes of up to 200 words: a prompt instruction,
 not a limit enforced through local truncation. The main agent receives these notes as data,
 maintains its history, and answers the final turn. Both use the same cache policy.
 Neither agent executes actions or accesses real tools.
@@ -106,6 +139,14 @@ while keeping evaluation strict. The baselines were rerun. Results before and af
 this change must therefore be analyzed as separate batches.
 
 ## Status update experiment (v0.3.0)
+
+![Mean session cost split into investigation, notes and status](benchmarks/status-cost-composition.svg)
+
+Three updates per note snapshot; compare strategies within each provider.
+
+
+<details>
+<summary>Status methodology, results and reproduction</summary>
 
 This experiment compares the cost of producing status updates from the main agent's full
 conversation history versus short working notes. The main agent still runs the same six-turn
@@ -314,9 +355,8 @@ in `02`. The saved error classes cannot establish the underlying causes, and no 
 messages were retained. Missing updates after interruption are schedule shortfalls,
 not observed model-content failures. Unknown costs remain `null`.
 
-All four complete source sets are present. Raw results stay local and ignored by Git;
-the public CSV preserves source-run provenance and aggregate metrics, without prompts or
-raw answers. Configured-rate costs are not a reconciliation with provider invoices.
+All four complete source sets are present. Original results stay local and ignored by Git; sanitized accounting and evaluation
+records are available under [benchmarks/evidence](benchmarks/evidence). Configured-rate costs are not a reconciliation with provider invoices.
 The `k = 3` provider runs occurred nine days apart; model aliases, service variation,
 and execution conditions further limit direct comparisons. These results do not establish
 an OpenAI-versus-Anthropic ranking, reproduce Claude Code internals, or measure subscriptions.
@@ -324,6 +364,30 @@ Only structured status fields and description size are checked; note semantics a
 full semantic quality of free-text status descriptions are not evaluated.
 
 ### Reproduce reports or run a new comparison
+
+Regenerate the public CSV offline from explicitly selected local source runs, then compare
+it with the committed result:
+
+```bash
+uv run context-bench consolidate \
+  results/openai-status-length-validation-01 \
+  results/anthropic-status-length-validation-01 \
+  results/openai-status-reuse3-03 \
+  results/anthropic-status-reuse3-03 \
+  --output /tmp/status-validation-recomputed.csv
+diff -u benchmarks/status-validation.csv /tmp/status-validation-recomputed.csv
+```
+
+The output path must be new. `consolidate` reads schema-3 live status runs and validates
+completed manifests, planned repetitions, session associations, and the full task/note/status
+call schedule. Missing files, interrupted runs, incomplete responses, and missing or duplicate
+scheduled calls fail before creating the CSV. Session approval flags and status pass counts
+must agree with the saved boolean checks; contradictory or malformed quality metadata is
+rejected. Existing source files, including `summary.csv`, are never rewritten. Every run keeps
+its own baseline, provider, update count, model aliases, and hashes; runs are not pooled, even when supplied in the same command. Completed sessions
+with failed quality checks can be exported, with no savings claimed for those conditions.
+Unknown costs are written as `null`. This reuses recorded costs and evaluation results;
+it does not reprice calls or reevaluate answers that were never retained.
 
 Recompute existing local reports without API calls:
 
@@ -353,6 +417,8 @@ The shorter `*-status.toml` examples use one repetition and plan 43 calls. In ge
 the three strategies make `28 + 15 × k` calls per repetition. `--diagnostics` is optional
 and saves only bounded evaluated final fields from this synthetic incident. Check historical
 model availability and rates before any paid run; do not reuse an existing output directory.
+
+</details>
 
 ## Run it
 
@@ -499,7 +565,32 @@ Prompts, intermediate notes, headers, keys, and exception messages are not recor
 `--diagnostics` allows only the limited recording of final fields described above.
 Keep telemetry settings the same when comparing timings.
 
+## Public evidence and engineering contribution
+
+`benchmarks/evidence/` contains manifests, per-call accounting and session checks from eight
+completed runs. Prompts, answers, `answer_diagnostics`, and telemetry IDs are excluded.
+`sha256.json` detects file changes; it is not an independent signature. The reproduction
+script checks normalized usage, historical rates and exact CSV agreement. It cannot reevaluate
+discarded text. Historical failures remain documented and preserved locally; the public
+bundle selects the completed runs used in the tables.
+
+```bash
+uv run python scripts/reproduce_benchmarks.py --output /tmp/bench-tables-NEW
+```
+
+The output directory must be new. Runs are not pooled across hashes or providers.
+This project's engineering contribution is the controlled experiment design, context
+isolation, role accounting, deterministic evaluation, failure recovery and note-amortization
+analysis, built on the engineering harness credited below.
+
 ## Development
+
+Regenerate the static figure without changing project dependencies:
+
+```bash
+uv run --no-project --with matplotlib python scripts/plot_status_costs.py
+```
+
 
 ```bash
 uv sync --frozen --all-extras --all-groups
