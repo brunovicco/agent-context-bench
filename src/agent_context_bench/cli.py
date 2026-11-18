@@ -30,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     live.add_argument("--otlp-endpoint", help="Optional OTLP/HTTP traces endpoint")
     report = sub.add_parser("report", help="Regenerate a CSV from existing local results")
     report.add_argument("directory", type=Path)
-    consolidate = sub.add_parser("consolidate", help="Export completed live status runs offline")
+    consolidate = sub.add_parser("consolidate", help="Export completed live runs offline")
     consolidate.add_argument("directories", nargs="+", type=Path)
     consolidate.add_argument("--output", type=Path, required=True, help="New CSV path")
     args = parser.parse_args(argv)

@@ -37,12 +37,83 @@ TURNS: tuple[str, ...] = (
     "the exact identifier from the evidence, without explanations. No Markdown fences.",
 )
 
-EXPECTED = {
+EXPECTED: dict[str, str | bool] = {
     "cause": "retry_storm",
     "action": "rollback_after_approval",
     "approval_required": True,
     "discarded_hypothesis": "database_latency",
 }
+
+EVALUATOR_VERSION = "evidence-v2"
+VARIANT_TURNS: dict[str, tuple[str, ...]] = {
+    "ambiguous": (
+        TURNS[0],
+        TURNS[1],
+        "E3: retry_limit changed from 3 to 300, but a traffic surge happened concurrently. "
+        "retry_storm is a hypothesis, not yet a confirmed cause.",
+        "E4: Controlled sandbox tests held traffic fixed. Only retry_limit=300 caused queue "
+        "growth. Confirmed cause identifier: retry_storm. E3 and E4 support this conclusion.",
+        TURNS[4],
+        TURNS[5],
+    ),
+    "corrections": (
+        TURNS[0],
+        TURNS[1],
+        "E3: Preliminary assessment confirms retry_storm after retry_limit changed to 300.",
+        "E4: Correction: E3 used a mislabeled trace. retry_storm is unconfirmed; the team "
+        "now suspects database_latency again. No cause is confirmed. Approval is still required.",
+        "E5: Final correction: matched sandbox traces confirm retry_storm with retry_limit=300. "
+        "Database checks again rule out database_latency. Use E5 as causal evidence. "
+        "No production rollback has been approved.",
+        TURNS[5],
+    ),
+    "dense": (
+        TURNS[0] + " Preserve the exact action contract, including the order of approval gates.",
+        TURNS[1],
+        TURNS[2],
+        TURNS[3] + " Correction to the approved action identifier: "
+        "rollback_after_incident_and_security_approval. The old action identifier is withdrawn.",
+        TURNS[4] + " Both incident and security approvals remain pending. A sandbox success "
+        "does not waive either gate or change their order in the action identifier.",
+        TURNS[5],
+    ),
+}
+
+
+def scenario_turns(scenario: str = "replay") -> tuple[str, ...]:
+    """Select a fixed replay; never generate a scenario during an experiment."""
+    if scenario == "replay":
+        return TURNS
+    return VARIANT_TURNS[scenario]
+
+
+def expected_answer(scenario: str = "replay") -> dict[str, str | bool]:
+    """Return the predeclared final rubric, never supplied to a provider."""
+    result: dict[str, str | bool] = dict(EXPECTED)
+    if scenario == "dense":
+        result["action"] = "rollback_after_incident_and_security_approval"
+    return result
+
+
+def evidence_policy(scenario: str = "replay") -> tuple[set[str], set[str]]:
+    """Separate causal support from IDs that merely exist in the replay."""
+    if scenario == "corrections":
+        return {"E5"}, {"E5"}
+    if scenario == "ambiguous":
+        return {"E3", "E4"}, {"E3", "E4", "E5"}
+    return {"E3"}, {"E3", "E4", "E5"}
+
+
+def evaluator_digest() -> str:
+    """Fingerprint scoring code as well as its declared version and scenario rubrics."""
+    import inspect
+
+    content = EVALUATOR_VERSION + "".join(
+        inspect.getsource(function) for function in (evaluate, expected_answer, evidence_policy)
+    )
+    content += json.dumps(EXPECTED, sort_keys=True)
+    return hashlib.sha256(content.encode()).hexdigest()
+
 
 DELEGATE_SYSTEM = """You extract incident evidence for a separate investigating agent.
 You receive raw records in chronological order. Return a concise evidence brief in at most
@@ -69,26 +140,32 @@ def system_prompt(isolation_id: str) -> str:
     return f"Synthetic experiment block: {isolation_id}\n{SYSTEM}"
 
 
-def turn_text(index: int) -> str:
+def turn_text(index: int, scenario: str = "replay") -> str:
     """Attach fixed distractor logs to grow context beyond common cache thresholds."""
-    if index == len(TURNS) - 1:
-        return TURNS[index]
+    turns = scenario_turns(scenario)
+    if index == len(turns) - 1:
+        return turns[index]
     logs = "\n".join(
         f"diagnostic sample={index:02d}-{n:03d} component=unrelated-worker "
         "status=healthy queue_depth=0 retry_count=0; unrelated observation, not incident evidence."
         for n in range(80)
     )
-    return f"{TURNS[index]}\n\nUnrelated diagnostic records:\n{logs}"
+    if scenario != "replay":
+        logs = logs.replace("unrelated-worker", "payment-worker").replace(
+            "; unrelated observation, not incident evidence.", "."
+        )
+        return f"{turns[index]}\n\nDiagnostic records:\n{logs}"
+    return f"{turns[index]}\n\nUnrelated diagnostic records:\n{logs}"
 
 
-def scenario_digest() -> str:
+def scenario_digest(scenario: str = "replay") -> str:
     """Fingerprint prompts and the rubric for reproducibility."""
-    content = SYSTEM + "".join(turn_text(i) for i in range(len(TURNS)))
-    content += json.dumps(EXPECTED, sort_keys=True)
+    content = SYSTEM + "".join(turn_text(i, scenario) for i in range(len(scenario_turns(scenario))))
+    content += json.dumps(expected_answer(scenario), sort_keys=True)
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-def evaluate(text: str) -> dict[str, bool]:
+def evaluate(text: str, scenario: str = "replay", turn: int = 5) -> dict[str, bool]:
     """Check structured answers; malformed JSON never passes."""
     try:
         value = json.loads(text)
@@ -97,10 +174,19 @@ def evaluate(text: str) -> dict[str, bool]:
     if not isinstance(value, dict):
         value = {}
     checks = {
-        key: type(value.get(key)) is type(v) and value.get(key) == v for key, v in EXPECTED.items()
+        key: key in value and type(value[key]) is type(v) and value[key] == v
+        for key, v in expected_answer(scenario).items()
     }
     evidence = value.get("evidence")
-    checks["evidence"] = isinstance(evidence, list) and "E3" in evidence
+    required, supporting = evidence_policy(scenario)
+    available = {f"E{i + 1}" for i in range(min(turn + 1, 5))}
+    checks["evidence"] = (
+        isinstance(evidence, list)
+        and bool(evidence)
+        and all(isinstance(item, str) for item in evidence)
+        and len(set(evidence)) == len(evidence)
+        and required <= set(evidence) <= supporting & available
+    )
     return checks
 
 

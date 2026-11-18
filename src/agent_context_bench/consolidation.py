@@ -6,6 +6,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from agent_context_bench.contracts import validate_quality_counts, validate_v4_run
 from agent_context_bench.models import STATUS_STRATEGIES
 from agent_context_bench.runner import read_rows, report_rows
 
@@ -50,47 +51,26 @@ STATUS_COLUMNS = (
     "session_elapsed_p50_ms",
     "status_latency_p50_ms",
 )
-
-
-def checks_passed(checks: object) -> bool:
-    """Read a recorded verdict only from a nonempty dictionary of boolean checks."""
-    if (
-        not isinstance(checks, dict)
-        or not checks
-        or any(type(value) is not bool for value in checks.values())
-    ):
-        raise ValueError("Missing or malformed recorded checks")
-    return all(checks.values())
-
-
-def validate_quality_counts(calls: list[dict[str, Any]], sessions: list[dict[str, Any]]) -> None:
-    """Cross-check saved aggregates without reevaluating discarded response text."""
-    for session in sessions:
-        selected = [call for call in calls if call["session_id"] == session["session_id"]]
-        status_passed = sum(
-            checks_passed(call.get("checks")) for call in selected if call["operation"] == "status"
-        )
-        # Evaluate every note's metadata, even after a prior note failed.
-        note_verdicts = [
-            checks_passed(call.get("checks"))
-            for call in selected
-            if call["operation"] == "status_notes"
-        ]
-        notes_passed = all(note_verdicts)
-        task_passed = checks_passed(session.get("checks"))
-        expected = {
-            "task_passed": task_passed,
-            "notes_passed": notes_passed,
-            "status_updates_passed": status_passed,
-            "passed": task_passed
-            and notes_passed
-            and status_passed == session["status_updates_expected"],
-        }
-        if any(
-            type(session.get(key)) is not type(value) or session[key] != value
-            for key, value in expected.items()
-        ):
-            raise ValueError("Session quality counts disagree with recorded checks")
+V4_COLUMNS = (
+    "schema_version",
+    "evaluator_version",
+    "evaluator_sha256",
+    "status_evaluator_sha256",
+    "scenario",
+    "task_schedule",
+    "notes_format",
+    "baseline_strategy",
+    "task_model",
+    "delegate_model",
+    "notes_model",
+    "renderer",
+    "local_status_updates",
+    "task_savings_vs_cache_fraction",
+    "main_cost_usd",
+    "subagent_cost_usd",
+    "main_known_input_tokens",
+    "subagent_known_input_tokens",
+)
 
 
 def validate_status_run(
@@ -159,6 +139,7 @@ def consolidate_status(directories: list[Path], output: Path) -> int:
     if not directories or len({p.resolve() for p in directories}) != len(directories):
         raise ValueError("Provide distinct source runs")
     rows: list[dict[str, Any]] = []
+    modern = False
     for directory in directories:
         for filename in ("manifest.json", "calls.jsonl", "sessions.jsonl"):
             if not (directory / filename).is_file():
@@ -166,10 +147,20 @@ def consolidate_status(directories: list[Path], output: Path) -> int:
         manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
         calls = read_rows(directory / "calls.jsonl")
         sessions = read_rows(directory / "sessions.jsonl")
-        validate_status_run(manifest, calls, sessions)
+        observations = read_rows(directory / "observations.jsonl")
+        schema = manifest["schema_version"]
+        if schema == 4:
+            validate_v4_run(manifest, calls, sessions, observations)
+            modern = True
+        else:
+            validate_status_run(manifest, calls, sessions)
+            if observations:
+                raise ValueError("Legacy runs cannot contain local observations")
         config = manifest["config"]
-        for row in report_rows(calls, sessions, manifest):
+        reports = report_rows(calls, sessions, manifest, observations)
+        for row in reports:
             row.update(
+                schema_version=schema,
                 provider=config["provider"],
                 source_run=directory.name,
                 started_at=manifest["started_at"],
@@ -177,13 +168,22 @@ def consolidate_status(directories: list[Path], output: Path) -> int:
                 status_model=config["subagent"]["model"]
                 if row["strategy"] == "status_notes_small_model"
                 else config["model"],
-                status_prompt_sha256=manifest["status_prompt_sha256"],
+                status_prompt_sha256=manifest.get("status_prompt_sha256"),
                 scenario_sha256=manifest["scenario_sha256"],
                 status_updates_per_turn=config["status_updates_per_turn"],
             )
-            rows.append({key: "null" if row[key] is None else row[key] for key in STATUS_COLUMNS})
+            if schema == 4:
+                row.update(
+                    status_model=manifest["condition_specs"][row["strategy"]]["status_model"],
+                    schema_version=4,
+                    evaluator_version=manifest["evaluator_version"],
+                )
+            rows.append(row)
+    columns = (*STATUS_COLUMNS, *V4_COLUMNS) if modern else STATUS_COLUMNS
     with output.open("x", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=STATUS_COLUMNS, lineterminator="\n")
+        writer = csv.DictWriter(stream, fieldnames=columns, lineterminator="\n")
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(
+            {key: "null" if row.get(key) is None else row[key] for key in columns} for row in rows
+        )
     return len(rows)
