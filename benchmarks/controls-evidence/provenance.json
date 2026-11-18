@@ -1,0 +1,33 @@
+{
+  "recorded_at": "2026-11-18T12:43:36.488672+00:00",
+  "scope": "Four task controls, original replay, every_turn, three repetitions per provider",
+  "planned_calls_per_provider": 102,
+  "diagnostics_enabled": false,
+  "prices_verified_on": "2026-11-18",
+  "configured_rates_match_verified_prices": true,
+  "price_sources": [
+    "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+    "https://developers.openai.com/api/docs/models/gpt-6-luna",
+    "https://platform.claude.com/docs/en/about-claude/pricing"
+  ],
+  "input_file_sha256": {
+    "src/agent_context_bench/__init__.py": "a163581ed526581932c7ad11a1066239cea9bfcb8b937e3370b79a00710efc4f",
+    "src/agent_context_bench/cli.py": "e2eaeffb7d02ff2b72949dde9c0cdd7df6fd21d4e7685ee02174fb1cf05789d8",
+    "src/agent_context_bench/consolidation.py": "bdc7a0dd3272fc93fa27ce77795db0eeba87eb8ff1981dc30d2bf5033df0663c",
+    "src/agent_context_bench/contracts.py": "6f8670f76a984dfa043c4a72b906477793d047def3bfc854c5978b8a51879b3e",
+    "src/agent_context_bench/models.py": "6ad244d7e3d0a4509f0a77d23d84fd2d174b4c35e3701135121d2464e5154632",
+    "src/agent_context_bench/providers.py": "ddd7e37ae53048894319aaa1acf1d5d8e0e861103d84345da321bccdbaede84e",
+    "src/agent_context_bench/runner.py": "f7c0f8dac5e227921bbb25b5573375ca466a417665c7c7cb4f7f3a27ca8a4721",
+    "src/agent_context_bench/scenario.py": "fdff465e76efc6bbcb7f902e37bff48b2608b9fbadbf41849622a9c5ed097555",
+    "src/agent_context_bench/status_updates.py": "ad8668ad1d938b15fafb0e2378bb5417bcee5548fd81712090cb51e9df1156e2",
+    "src/agent_context_bench/telemetry.py": "e4f5b51417f9c70d79295746a297c8c2f2eead779063a04906dd977c672e6f54",
+    "configs/openai-controls.toml": "86bb3e407802c20ff5ee94d2d2c90dce4a3b82649dfdf0c2785df09626e3098f",
+    "configs/anthropic-controls.toml": "555e4475130d0f2f38c9b3949b03b30495e2879ccaa63c1004016fb163dbffdf",
+    "uv.lock": "ebbc1228412d68d5732fca566e99f356c84ae0b9f413a39354cd854fa9b5d99d",
+    "pyproject.toml": "f9da9fd6da66621f8871df2fc06f4c2ac3fbc81b4cc70a603c9e45ff41e277d8"
+  },
+  "source_runs": [
+    "openai-controls-validation-20261118-01",
+    "anthropic-controls-validation-20261118-01"
+  ]
+}

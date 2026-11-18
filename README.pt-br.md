@@ -2,40 +2,151 @@
 
 [English](README.md) | **Português (Brasil)**
 
-**Quanto custa manter contexto - e quando vale delegar parte do trabalho a outro modelo?**
+**Meça o fluxo completo do agente: custo, contexto e tempo.**
 
-Este projeto compara histórico completo, cache, resumo, delegação e atualizações de status
-usando as APIs da OpenAI e da Anthropic. Mede custo, tempo e acerto na resposta final de um mesmo incidente,
-com contabilização separada para o agente principal e o subagente.
+Uma CLI Python para experimentos controlados de cache, resumo, delegação e atualizações
+de status com os SDKs oficiais da OpenAI e da Anthropic. Contabiliza cada chamada e avalia
+respostas estruturadas de um incidente, usando arquivos locais JSONL/CSV e telemetria opcional.
 
-No piloto de delegação, usar um subagente mais barato reduziu o custo por tarefa aprovada
-em **73,3% na OpenAI** e **66,2% na Anthropic**, frente ao controle com cache. O tempo mediano
-da sessão aumentou para **1,99×** e **2,38×**, respectivamente. Delegar ao mesmo modelo
-ficou mais caro nos dois provedores.
+**Achado mais recente:** no replay sintético, o modelo barato sozinho passou nos mesmos
+checks configurados e foi mais barato e rápido que a delegação barata nos dois provedores.
 
-**Escopo desses números:** três repetições por condição, um único cenário sintético,
-chamadas reais às APIs. Todas as condições passaram em 3/3 sessões. É uma medição inicial
-de repetibilidade, sem evidência de qualidade equivalente em tarefas variadas.
+[Resultados recentes](#resultados-recentes-o-controle-com-modelo-barato-sozinho) ·
+[Início rápido](#início-rápido-offline) · [Como funciona](#como-funciona) ·
+[Método](#método-e-limites) · [Evidências](#evidências-públicas-e-contribuição-técnica) ·
+[Desenvolvimento](#desenvolvimento)
 
-[Cache](#cache-e-resumo-experimento-original) · [Delegação](#resultados-do-piloto) · [Status](#experimento-de-atualização-de-status-v030) · [Como funciona](#como-funciona) ·
-[Executar](#executar) · [Método](#método-e-limites) · [Desenvolvimento](#desenvolvimento)
+## Resultados recentes: o controle com modelo barato sozinho
 
-## Demonstração offline
+![Custo calculado por papel e tempo mediano da sessão nos quatro controles de tarefa](benchmarks/controls-cost-comparison.pt-br.svg)
+
+O controle adicional muda a interpretação: **o modelo barato sozinho custou 91,1% menos
+que a delegação barata na OpenAI e 85,3% menos na Anthropic**, além de terminar mais rápido
+que esse fluxo de delegação. Todas as condições passaram nos checks configurados em 3/3 sessões.
+
+| Estratégia | OpenAI · USD/sessão | Tempo mediano | Anthropic · USD/sessão | Tempo mediano |
+| --- | ---: | ---: | ---: | ---: |
+| Principal + cache | 0,08455 | 8,69 s | 0,07502 | 8,11 s |
+| **Barato sozinho + cache** | **0,00218** | **9,29 s** | **0,00419** | **8,11 s** |
+| Delegação ao mesmo modelo | 0,11363 | 19,23 s | 0,10491 | 31,41 s |
+| Delegação ao modelo barato | 0,02462 | 19,92 s | 0,02857 | 27,68 s |
+
+**Medição de 18 de novembro de 2026:** 204 chamadas de API, 24 sessões, nenhum erro de API
+e custo calculado total de US$ 1,31303. Os custos incluem os dois papéis. O tempo de sessão
+inclui o fluxo sequencial completo. Houve leituras de cache e contabilidade completa nos dois lotes.
+Fonte: [CSV completo](benchmarks/controls-validation.csv) ·
+[evidências sanitizadas](benchmarks/controls-evidence).
+
+O modelo barato sozinho economizou 97,4% e 94,4% frente ao principal com cache,
+respectivamente. A delegação barata levou 2,14× e 3,41× o tempo do modelo barato sozinho.
+Na OpenAI, o modelo barato sozinho foi um pouco mais lento que o principal com cache;
+na Anthropic, ambas as medianas arredondam para 8,11 segundos. São medianas observadas,
+sem estabelecer um ranking de velocidade.
+
+**Interpretação:** este replay não demonstra benefício em combinar dois modelos frente
+a usar o modelo barato sozinho. Três repetições de uma tarefa sintética de preservação de
+evidências não estabelecem generalização ou qualidade equivalente em outras tarefas.
+Passar nos checks configurados não significa que toda a resposta esteja correta.
+
+<details>
+<summary>Modelos, avaliação, cache e reprodução offline</summary>
+
+| Provedor | Modelo principal | Modelo barato | Leitura de cache/entrada: principal sozinho / barato sozinho |
+| --- | --- | --- | ---: |
+| OpenAI | `gpt-5.6-sol` | `gpt-6-luna` | 75,03% / 75,03% |
+| Anthropic | `claude-sonnet-5-5` | `claude-haiku-5-5` | 74,93% / 74,94% |
+
+As strings de modelo solicitado e retornado coincidiram nas 204 chamadas. Esses aliases
+não identificam versões imutáveis. As frações de cache contam tokens de entrada entre
+requisições, incluindo entrada comum, leituras e escritas de cache. Descrevem estes fluxos
+e condições, sem estabelecer uma propriedade geral dos provedores.
+
+As quatro condições foram executadas novamente em blocos aleatorizados sob schema 4 e
+o avaliador fortalecido `evidence-v2`: IDs em strings, distintos, com suporte causal permitido
+e disponibilidade temporal. O replay original fornece a causa explicitamente e identifica
+logs irrelevantes. Mede retenção de identificadores, correções e restrições de aprovação,
+com pouca descoberta causal. Os controles de status, a agenda `final_only` e os cenários
+adicionais ainda não foram medidos com modelos reais.
+
+As tarifas configuradas mantêm a data de 6 de novembro; os mesmos preços foram conferidos
+nas fontes oficiais em 18 de novembro, conforme
+[provenance.json](benchmarks/controls-evidence/provenance.json). Os custos são calculados,
+sem conciliação com faturas. Os lotes novos ficam separados dos anteriores e não são agrupados
+entre revisões dos avaliadores.
+
+```bash
+uv run python scripts/reproduce_controls.py
+# Opcional: manter o CSV reconstruído em um diretório novo
+uv run python scripts/reproduce_controls.py --output /tmp/controls-tables-NEW
+```
+
+A reprodução verifica checksums, modelos, agenda completa, uso normalizado, custos pelas
+tarifas configuradas e igualdade exata do CSV. Reutiliza julgamentos booleanos registrados;
+não reavalia respostas descartadas. O pacote sanitizado não contém prompts, respostas ou IDs de telemetria.
+
+</details>
+
+## Início rápido (offline)
 
 ```bash
 uv sync --frozen
 uv run context-bench demo --output results/demo-NEW
+uv run python scripts/reproduce_controls.py
 uv run python scripts/reproduce_benchmarks.py
 ```
 
-O demo usa respostas fixas e não mede desempenho. O script de reprodução verifica oito
-execuções reais sanitizadas e reconstrói os três CSVs públicos sem credenciais nem APIs.
+O demo usa respostas fixas e não mede desempenho. Os scripts verificam dois lotes
+atuais de controles e oito anteriores, reconstruindo quatro CSVs sem credenciais nem chamadas de API.
 Escolha um diretório novo para cada demo.
+
+## Como funciona
+
+O cenário original é um replay sintético de incidente de pagamentos para testar preservação de evidências. Evidências
+chegam em cinco turnos: uma hipótese inicial, sua correção, a causa identificada e duas
+verificações em sandbox. O sexto turno pede uma resposta JSON. Logs irrelevantes aumentam
+progressivamente o contexto.
+
+A avaliação verifica cinco pontos: causa, ação, necessidade de aprovação humana,
+hipótese descartada e evidência causal. Novos lotes exigem IDs em strings, distintos,
+causalmente relevantes e já disponíveis, incluindo todas as referências causais obrigatórias.
+Os lotes anteriores, de schema 3, usavam o check: lista contendo E3. Seus vereditos históricos
+são preservados, sem atualização retroativa. A avaliação usa regras determinísticas, sem LLM juiz.
+Os valores esperados vêm das evidências; o prompt de sistema descreve o formato, sem entregar o gabarito.
+
+| Estratégia | O que muda | Chamadas por sessão |
+| --- | --- | ---: |
+| `full` | Histórico completo, controle sem cache | 6 |
+| `cache` | Histórico completo com cache | 6 |
+| `cache_small_model` | Histórico completo e cache, com o modelo alternativo resolvendo sozinho | 6 |
+| `summary` | Uma chamada de resumo substitui o histórico após três turnos; cache ativo | 7 |
+| `delegate_same_model` | Um subagente mantém as evidências brutas; principal recebe notas; mesmo modelo | 11 |
+| `delegate_small_model` | Mesmo fluxo de delegação, com outro modelo no subagente | 11 |
+
+O subagente é único, mantém seu próprio histórico e recebe apenas as evidências já liberadas.
+A cada turno, produz notas de até 200 palavras - limite solicitado no prompt, sem truncamento
+local. O principal recebe as notas como dados, mantém seu histórico e responde ao turno final.
+Ambos usam a mesma política de cache. Nenhum agente executa ações ou acessa ferramentas reais.
+
+### O formato da resposta também faz parte do experimento
+
+Uma rodada de diagnóstico retornou `retry_storm` e `database_latency` acompanhados de
+explicações. A informação estava presente, mas os campos reprovaram na comparação exata.
+Outra resposta não era JSON válido; o diagnóstico disponível não permite determinar sua forma.
+
+O contrato passou a exigir identificadores sem explicações e um objeto JSON sem Markdown.
+A instrução foi aplicada a todos os provedores e estratégias, mantendo a avaliação estrita.
+Os controles foram executados novamente. Por isso, os resultados anteriores e posteriores
+à mudança devem ser analisados como lotes distintos.
+
+## Experimentos anteriores de cache e delegação
+
+<details>
+<summary>Resultados originais, interpretação e proveniência</summary>
 
 ## Cache e resumo: experimento original
 
 | Provedor | Estratégia | Total USD, 3 sessões | Economia frente a full | Mediana da sessão | Aprovação |
-|---|---|---:|---:|---:|---:|
+| --- | --- | ---: | ---: | ---: | ---: |
 | openai | `cache` | 0.2576734 | 59.28% | 11.59 s | 3/3 |
 | openai | `full` | 0.6328240 | 0.00% | 9.61 s | 3/3 |
 | openai | `summary` | 0.2558794 | 59.57% | 15.38 s | 3/3 |
@@ -77,12 +188,12 @@ Uso completo e controle de cache válido foram reportados em todas as condiçõe
 
 ### O que esses números mostram
 
-- **Um contexto menor no principal não significa a mesma redução no processamento total.**
+- **Um contexto menor no principal não significa a mesma redução nos tokens de entrada acumulados.**
   Com o subagente barato, os tokens de entrada acumulados do principal caíram 93,2% na OpenAI
   e 85,8% na Anthropic. Somando os dois papéis, as quedas foram 18,0% e 8,7%.
 - **O modelo escolhido para a delegação importa.** O fluxo com o mesmo modelo custou mais
-  que o controle. Com o modelo barato, parte do processamento passou a ter uma tarifa menor.
-  A comparação também inclui mudanças nas notas e respostas geradas.
+  que o controle. A economia apareceu com o modelo barato; sua troca não foi isolada das mudanças em
+  comprimento das saídas, notas, respostas ou comportamento observado de cache.
 - **Há um custo de tempo.** A delegação deste experimento é sequencial: cada turno espera
   o subagente antes de chamar o principal. São 11 chamadas por sessão, contra 6 no controle.
 - **Cache habilitado não garante cache utilizado.** Na OpenAI, o principal das variantes
@@ -101,47 +212,16 @@ Os agregados são reproduzíveis a partir das evidências sanitizadas versionada
 [benchmarks/evidence](benchmarks/evidence).
 Rodadas anteriores, com outro contrato de saída, não entram nesta tabela.
 
-## Como funciona
-
-O cenário simula a investigação de um incidente em processamento de pagamentos. Evidências
-chegam em cinco turnos: uma hipótese inicial, sua correção, a causa identificada e duas
-verificações em sandbox. O sexto turno pede uma resposta JSON. Logs irrelevantes aumentam
-progressivamente o contexto.
-
-A avaliação verifica cinco pontos: causa, ação, necessidade de aprovação humana,
-hipótese descartada e referência à evidência causal. Usa regras determinísticas, sem um LLM juiz.
-Os valores esperados vêm das evidências; o prompt de sistema descreve o formato, sem entregar o gabarito.
-
-| Estratégia | O que muda | Chamadas por sessão |
-| --- | --- | ---: |
-| `full` | Histórico completo, controle sem cache | 6 |
-| `cache` | Histórico completo com cache | 6 |
-| `summary` | Uma chamada de resumo substitui o histórico após três turnos; cache ativo | 7 |
-| `delegate_same_model` | Um subagente mantém as evidências brutas; principal recebe notas; mesmo modelo | 11 |
-| `delegate_small_model` | Mesmo fluxo de delegação, com outro modelo no subagente | 11 |
-
-O subagente é único, mantém seu próprio histórico e recebe apenas as evidências já liberadas.
-A cada turno, produz notas de até 200 palavras - limite solicitado no prompt, sem truncamento
-local. O principal recebe as notas como dados, mantém seu histórico e responde ao turno final.
-Ambos usam a mesma política de cache. Nenhum agente executa ações ou acessa ferramentas reais.
-
-### O formato da resposta também faz parte do experimento
-
-Uma rodada de diagnóstico retornou `retry_storm` e `database_latency` acompanhados de
-explicações. A informação estava presente, mas os campos reprovaram na comparação exata.
-Outra resposta não era JSON válido; o diagnóstico disponível não permite determinar sua forma.
-
-O contrato passou a exigir identificadores sem explicações e um objeto JSON sem Markdown.
-A instrução foi aplicada a todos os provedores e estratégias, mantendo a avaliação estrita.
-Os controles foram executados novamente. Por isso, os resultados anteriores e posteriores
-à mudança devem ser analisados como lotes distintos.
+</details>
 
 ## Experimento de atualização de status (v0.3.0)
 
 ![Custo médio por sessão: investigação, notas e status](benchmarks/status-cost-composition.svg)
 
-Três reutilizações por nota; compare estratégias dentro de cada provedor.
-
+Experimento histórico de status: três atualizações por snapshot de notas.
+Nesse nível de reutilização, notas + renderização barata economizaram 21,2% do custo total
+na OpenAI e 43,5% na Anthropic. A medição é anterior aos novos controles de status; compare
+estratégias dentro de cada provedor. Com uma atualização na OpenAI, as notas superaram a economia de renderização.
 
 <details>
 <summary>Metodologia, resultados e reprodução de status</summary>
@@ -254,7 +334,9 @@ As quatro usam o SHA-256 dos prompts de status
 `ec1cbb883ff80e79b5883d0fb88ba8b47f50d8e4f4776252b776337075d2326b`
 e o SHA-256 do cenário
 `1fec88977685fae92acf8800484af594e3ddded0c1a74b21ecfd89fbd7561de5`.
-O código atual corresponde aos dois hashes. As configurações correspondem aos manifestos:
+O replay padrão e os prompts legados de notas em texto continuam correspondendo aos dois
+hashes. Novos hashes dos avaliadores e manifestos de schema 4 distinguem os checks
+fortalecidos dos vereditos publicados. As configurações correspondem aos manifestos:
 seed 42, limite de 2.048 tokens de saída, timeout de 60 segundos por chamada, três repetições,
 SDKs OpenAI 2.54.0 e Anthropic 0.125.0. As strings dos modelos solicitados e retornados
 coincidem em todas as chamadas; esses aliases não estabelecem versões imutáveis dos modelos.
@@ -370,8 +452,10 @@ com a fatura. As rodadas dos provedores em `k = 3` ocorreram com nove dias de di
 aliases de modelos, variação do serviço e condições de execução limitam comparações diretas.
 Os resultados não estabelecem um ranking OpenAI versus Anthropic, não reproduzem a
 implementação interna do Claude Code e não medem assinaturas. Somente campos estruturados
-e tamanho da descrição dos status são verificados; não se avaliam a semântica das notas
-nem toda a qualidade semântica das descrições livres.
+e tamanho da descrição dos status foram verificados nesses lotes publicados; não foram
+avaliadas a semântica das notas nem toda a qualidade semântica das descrições livres.
+Novas notas estruturadas verificam também os fatos de cada snapshot. O texto livre gerado
+por LLM continua sem avaliação de coerência semântica; o template evita prosa gerada de forma independente.
 
 ### Reproduzir relatórios ou executar nova comparação
 
@@ -434,6 +518,129 @@ rodada paga; não reutilize um diretório de saída existente.
 
 </details>
 
+<details>
+<summary>Referência de configuração: controles de tarefa, status, agendas e cenários</summary>
+
+## Novas comparações controladas (schema 4)
+
+Os quatro controles de tarefa foram medidos nos resultados recentes acima. Os controles
+de status, a agenda sem acknowledgements e os cenários adicionais estão implementados e
+testados offline, mas ainda sem medição real. O piloto anterior não incluía o modelo barato
+sozinho e não estabelece delegação como a melhor arquitetura disponível.
+O replay original fornece a causa explicitamente, identifica logs irrelevantes e exige
+principalmente acknowledgements e preservação de evidências, com pouca descoberta causal.
+No experimento de histórico completo versus resumo, cache respondeu por quase toda a
+economia observada; os 0,70% adicionais na OpenAI são uma diferença observada com três
+repetições, sem vantagem estabelecida.
+
+| Estratégia de tarefa | Modelo com evidência bruta | Modelo da resposta final | Chamadas/sessão: cada turno / só final |
+| --- | --- | --- | ---: |
+| `cache` | Principal | Principal | 6 / 1 |
+| `cache_small_model` | Alternativo | Alternativo | 6 / 1 |
+| `delegate_same_model` | Subagente principal | Principal | 11 / 6 |
+| `delegate_small_model` | Subagente alternativo | Principal | 11 / 6 |
+
+`[subagent]` configura o modelo alternativo e suas tarifas, inclusive quando resolve a tarefa
+sozinho. Nesse caso, `cache_small_model` é contabilizado no papel `main`. Os nomes de modelos
+e as tarifas dos novos TOMLs foram copiados do piloto e são entradas históricas, não cotações atuais.
+
+Para uma nova execução paga explicitamente autorizada, escolha uma configuração e saída nova:
+
+```bash
+uv run --env-file .env context-bench run \
+  --config configs/openai-controls.toml --output results/openai-controls-NEW --live
+```
+
+Use `anthropic-controls.toml` para o outro provedor. Cada configuração agenda três repetições
+das quatro condições: 102 chamadas por provedor. `*-decision-controls.toml` usa
+`task_schedule = "final_only"`: 42 chamadas por provedor. Todas as cinco evidências se acumulam
+antes da resposta final. Os subagentes continuam produzindo um brief por evidência liberada;
+o principal recebe os cinco briefs em ordem. Não são fabricados acknowledgements do assistente.
+Essa variante compara agendas de chamadas; não representa decisões intermediárias autônomas.
+`summary` exige a agenda `every_turn`.
+
+As configurações `*-status-controls.toml` comparam seis condições sob o mesmo contrato de
+notas estruturadas, usando `notes_format = "structured"`:
+
+| Estratégia | Contexto do status | Modelo das notas | Renderizador |
+| --- | --- | --- | --- |
+| `status_full_history` | Histórico completo | — | Principal |
+| `status_full_history_small_model` | Histórico completo | — | Alternativo |
+| `status_notes_same_model` | Notas | Principal | Principal |
+| `status_notes_small_model` | Notas | Principal | Alternativo |
+| `status_notes_template` | Notas | Principal | Template local |
+| `status_small_notes_small_model` | Notas | Alternativo | Alternativo |
+
+Com uma atualização por evidência, são 243 chamadas de API e 15 eventos locais por provedor
+nas três repetições. Com três atualizações, são 393 chamadas e 45 eventos locais. Cada nota
+é produzida uma vez por evidência. Para testar outra agenda, copie o TOML e altere
+`task_schedule = "final_only"` (153 chamadas com uma atualização), ou mude
+`status_updates_per_turn`, mantendo os controles correspondentes no novo lote.
+`status_baseline` identifica explicitamente o controle de status, por padrão
+`status_full_history`. Controle ausente ou sem aprovação produz economia null.
+
+As notas estruturadas contêm `latest_evidence`, `cause`, `discarded_hypothesis`,
+`approval_required` e IDs distintos em `evidence`. Devem preservar os fatos atuais e as
+referências causais obrigatórias dentro de 200 palavras. Notas estruturadas inválidas ou
+truncadas interrompem aquela sessão sem reparo ou fallback; a chamada cobrável e seus checks
+ficam registrados. As condições seguintes ainda podem executar. Notas legadas em `text`
+continuam disponíveis, verificando apenas presença e tamanho. Não agrupe lotes com notas
+em texto e estruturadas: a mudança de representação também é uma intervenção.
+
+O template local usa apenas campos das notas. Não consulta gabaritos, evidências brutas ou
+um índice de turno. Descreve causa, hipótese descartada e exigência de aprovação sem criar
+alegações independentes de execução. Não faz chamada de API. `observations.jsonl` registra
+somente agenda, tempo e checks booleanos, sem texto, uso, tarifas ou cache. O tempo local
+entra no tempo total da sessão; `status_latency_*` continua medindo chamadas LLM. Renderização
+local tem custo de API zero, mas custo desconhecido das notas mantém pipeline e total em null.
+Passar nos campos estruturados e no limite de palavras não estabelece coerência semântica
+da prosa livre de um LLM.
+
+Novos manifestos registram schema 4, versão e hashes do código dos avaliadores, hash do cenário,
+hash dos prompts de notas/status, ordem aleatorizada e modelos e turnos agendados por papel.
+`summary.csv` inclui modelos, formato das notas, agenda, hashes, eventos locais, economia de
+status frente a `status_baseline` e `task_savings_vs_cache_fraction` para os quatro controles
+de tarefa. Percentuais exigem agenda completa e válida, sessões aprovadas, custos conhecidos,
+contabilidade completa e controle de cache válido. Hits continuam vindo dos contadores das APIs;
+política válida de cache não comprova hits.
+
+```bash
+uv run context-bench consolidate results/openai-controls-NEW \
+  --output /tmp/openai-controls-NEW.csv
+```
+
+A consolidação offline aceita subconjuntos novos de tarefa/status e valida modelos, agenda
+exata de chamadas/eventos locais, associações e vereditos salvos. Preserva os arquivos de origem.
+Mantém compatibilidade com status de schema 3; exportar apenas fontes legadas mantém exatamente
+as colunas históricas. Exportações mistas acrescentam proveniência, deixando metadados legados
+desconhecidos em null. Não combina resultados entre cenários, critérios, provedores, formatos
+ou agendas. A reprodução pública continua reconstruindo os mesmos oito lotes e três tabelas.
+Ela reutiliza julgamentos registrados; respostas descartadas não podem ser reavaliadas com
+o novo avaliador.
+
+Os cenários adicionais têm critérios definidos no código antes de novas chamadas pagas:
+
+| `scenario` | Mudança | Evidências causais finais obrigatórias |
+| --- | --- | --- |
+| `replay` | Preservação original | E3 |
+| `ambiguous` | Mudança de configuração e aumento de tráfego simultâneos; confirmação só em E4 | E3, E4 |
+| `corrections` | Conclusão preliminar retirada em E4 e corrigida em E5 | E5 |
+| `dense` | Identificador exato da ação revisado; duas aprovações continuam pendentes | E3 |
+
+Use `*-ambiguous-controls.toml`, `*-corrections-controls.toml` ou `*-dense-controls.toml`.
+Cada um executa quatro condições em três repetições (102 chamadas). Para status em uma
+variante, copie um TOML de status-controls e altere `scenario`. Os logs das variantes não
+são rotulados explicitamente como irrelevantes. Continuam sendo testes sintéticos pequenos,
+com conclusões finais explícitas; `dense` verifica retenção exata de restrições, sem medir
+um limite geral de compressibilidade. Amplie repetições depois de avaliar os controles,
+fixando critérios e regras de relatório antes das execuções reais.
+
+No lote OpenAI publicado com uma atualização por nota, renderização de status caiu de
+US$ 0,2538624 para US$ 0,0015029, mas produzir notas custou US$ 0,2612. As notas superaram
+a economia de renderização; o total passou de US$ 0,5061482 para US$ 0,5165627, cerca de 2,1% a mais.
+
+</details>
+
 ## Executar
 
 Requisitos: Python 3.13 ou 3.14 e `uv`. O núcleo usa SDKs oficiais e arquivos locais;
@@ -456,21 +663,22 @@ Disponibilize `OPENAI_API_KEY` e/ou `ANTHROPIC_API_KEY` no ambiente ou em um `.e
 Revise os modelos disponíveis na sua conta e as tarifas em `configs/` antes de usar `--live`.
 As tarifas dos exemplos são datadas; não representam uma consulta atual de preços.
 
-Para uma repetição das três estratégias de delegação:
+Para três repetições dos quatro controles de tarefa:
 
 ```bash
 uv run --env-file .env context-bench run \
-  --config configs/openai-delegation.toml \
-  --output results/openai-delegation-01 --live
+  --config configs/openai-controls.toml \
+  --output results/openai-controls-NEW --live
 
 uv run --env-file .env context-bench run \
-  --config configs/anthropic-delegation.toml \
-  --output results/anthropic-delegation-01 --live
+  --config configs/anthropic-controls.toml \
+  --output results/anthropic-controls-NEW --live
 ```
 
-São 28 chamadas previstas por provedor. Para reproduzir o desenho do piloto, use
-`configs/openai-delegation-validation.toml` e `configs/anthropic-delegation-validation.toml`:
-três repetições, 84 chamadas por provedor. Use sempre uma pasta de saída nova.
+Essas configurações agendam 102 chamadas por provedor. Incluem o modelo barato sozinho,
+com o mesmo cenário, política de cache e contrato de saída das outras condições. Use sempre
+um diretório novo. As configurações anteriores de três condições continuam disponíveis
+como `*-delegation-validation.toml` (84 chamadas por provedor).
 
 Para comparar `full`, `cache` e `summary`, use `configs/openai.toml` ou
 `configs/anthropic.toml`. Com três repetições, são 57 chamadas previstas por provedor.
@@ -478,7 +686,7 @@ Para comparar `full`, `cache` e `summary`, use `configs/openai.toml` ou
 ### Leia os resultados
 
 ```bash
-uv run context-bench report results/openai-delegation-01
+uv run context-bench report results/openai-controls-NEW
 ```
 
 | Arquivo local | Conteúdo |
@@ -565,7 +773,7 @@ spans OTLP. O nome do pacote não implica uso do protocolo A2A neste benchmark.
 ```bash
 uv sync --frozen --extra telemetry
 uv run --env-file .env context-bench run \
-  --config configs/anthropic-delegation.toml \
+  --config configs/anthropic-controls.toml \
   --output results/anthropic-traced-01 --live \
   --otlp-endpoint http://localhost:4318/v1/traces
 ```
@@ -578,14 +786,16 @@ Mantenha a mesma configuração de telemetria ao comparar tempos.
 
 ## Evidências públicas e contribuição técnica
 
-O conjunto `benchmarks/evidence/` contém manifestos, contabilização por chamada e checks
-por sessão de oito lotes completos. Exclui prompts, respostas, `answer_diagnostics` e IDs
+`benchmarks/controls-evidence/` contém os dois lotes de controles de tarefa de 18 de novembro,
+em schema 4; `benchmarks/evidence/` preserva os oito lotes anteriores. Ambos contêm manifestos,
+contabilização por chamada e checks por sessão, com checksums e comandos de reprodução próprios. Exclui prompts, respostas, `answer_diagnostics` e IDs
 de telemetria. `sha256.json` detecta alterações nos arquivos; não é uma assinatura independente.
 O script de reprodução confere uso normalizado, tarifas históricas e igualdade dos CSVs.
 Não reavalia texto descartado. Falhas históricas permanecem documentadas e nos originais locais;
 o conjunto público seleciona os lotes completos usados nas tabelas.
 
 ```bash
+uv run python scripts/reproduce_controls.py --output /tmp/controls-tables-NEW
 uv run python scripts/reproduce_benchmarks.py --output /tmp/bench-tables-NEW
 ```
 
@@ -596,12 +806,13 @@ análise de amortização das notas sobre o harness de engenharia atribuído aba
 
 ## Desenvolvimento
 
-Para regenerar o gráfico estático sem alterar as dependências do projeto:
+Para regenerar os gráficos sem alterar as dependências do projeto:
 
 ```bash
-uv run --no-project --with matplotlib python scripts/plot_status_costs.py
+uv run python scripts/plot_controls.py
+uv run python scripts/plot_controls.py --language pt-br
+uv run python scripts/plot_status_costs.py
 ```
-
 
 ```bash
 uv sync --frozen --all-extras --all-groups
@@ -617,5 +828,6 @@ O projeto deriva do [codex-python-engineering-harness](https://github.com/brunov
 perfil `library`, versão 1.2.1. A origem está registrada em `.harness.json`.
 Mantém layout `src`, SDKs oficiais e CLI pequena. Código sob [licença MIT](LICENSE).
 
-Próxima extensão útil: acrescentar cenários com correções conflitantes e evidências essenciais
-mais difíceis de resumir, para avaliar se a economia permanece quando preservar informação é mais exigente.
+O próximo passo empírico é medir os controles de status e as variantes de cenário com
+critérios definidos antes das execuções. Os resultados atuais não estabelecem generalização
+ou qualidade equivalente fora deste replay.

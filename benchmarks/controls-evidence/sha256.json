@@ -1,0 +1,9 @@
+{
+  "anthropic-controls-validation-20261118-01/calls.jsonl": "0e63c08822cd9ae2f19165ba8065744d6eb99bfc7c793569a9acee975925be5b",
+  "anthropic-controls-validation-20261118-01/manifest.json": "af98ff4bc7e4fdba31c95524a2af5a4be066c15bec3b54d341e3e25a9a8dd078",
+  "anthropic-controls-validation-20261118-01/sessions.jsonl": "e7f18cfbd40a3b6ec8707239774096d83869b0d0592ce8b2e0f0210154116854",
+  "openai-controls-validation-20261118-01/calls.jsonl": "606416151bbdcfa8e00bdb2c46844ca98955343bfcf873950094706e852ac876",
+  "openai-controls-validation-20261118-01/manifest.json": "9aac27c1bed2ed2a1e86d9a8d6d28cefd23b6dccaa2c4a707caecbcab9c8a387",
+  "openai-controls-validation-20261118-01/sessions.jsonl": "268b43f238065776e29d02eafa64f24ebaa72f0ccf6aca9f0887e68425224fc8",
+  "provenance.json": "62b2270714ebba1ebdb887b64fd43dc7515c2442670cc41a411b79b97a13e856"
+}

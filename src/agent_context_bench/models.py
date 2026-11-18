@@ -9,21 +9,38 @@ from typing import Any, Literal
 type Strategy = Literal[
     "full",
     "cache",
+    "cache_small_model",
     "summary",
     "delegate_same_model",
     "delegate_small_model",
     "status_full_history",
     "status_notes_same_model",
     "status_notes_small_model",
+    "status_full_history_small_model",
+    "status_notes_template",
+    "status_small_notes_small_model",
 ]
 STRATEGIES: tuple[Strategy, ...] = ("full", "cache", "summary")
 DELEGATION_STRATEGIES: tuple[Strategy, ...] = ("delegate_same_model", "delegate_small_model")
+# Preserve the schema-3 comparison matrix for legacy readers and public reproduction.
 STATUS_STRATEGIES: tuple[Strategy, ...] = (
     "status_full_history",
     "status_notes_same_model",
     "status_notes_small_model",
 )
-SMALL_MODEL_STRATEGIES: tuple[Strategy, ...] = ("delegate_small_model", "status_notes_small_model")
+ALL_STATUS_STRATEGIES: tuple[Strategy, ...] = (
+    *STATUS_STRATEGIES,
+    "status_full_history_small_model",
+    "status_notes_template",
+    "status_small_notes_small_model",
+)
+SMALL_MODEL_STRATEGIES: tuple[Strategy, ...] = (
+    "cache_small_model",
+    "delegate_small_model",
+    "status_notes_small_model",
+    "status_full_history_small_model",
+    "status_small_notes_small_model",
+)
 
 
 @dataclass(frozen=True)
@@ -124,6 +141,10 @@ class Config:
     strategies: tuple[Strategy, ...] = field(default=STRATEGIES)
     subagent: SubagentConfig | None = None
     status_updates_per_turn: int = 1
+    scenario: Literal["replay", "ambiguous", "corrections", "dense"] = "replay"
+    task_schedule: Literal["every_turn", "final_only"] = "every_turn"
+    notes_format: Literal["text", "structured"] = "text"
+    status_baseline: Strategy = "status_full_history"
 
     def __post_init__(self) -> None:
         """Fail configuration before any network access."""
@@ -138,12 +159,30 @@ class Config:
         if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be finite and positive")
         if not self.strategies or any(
-            s not in (*STRATEGIES, *DELEGATION_STRATEGIES, *STATUS_STRATEGIES)
+            s
+            not in (
+                *STRATEGIES,
+                "cache_small_model",
+                *DELEGATION_STRATEGIES,
+                *ALL_STATUS_STRATEGIES,
+            )
             for s in self.strategies
         ):
             raise ValueError("Unknown or empty strategies")
         if len(set(self.strategies)) != len(self.strategies):
             raise ValueError("Duplicate strategies")
+        if self.scenario not in ("replay", "ambiguous", "corrections", "dense"):
+            raise ValueError("Unknown scenario")
+        if self.task_schedule not in ("every_turn", "final_only"):
+            raise ValueError("Unknown task schedule")
+        if self.notes_format not in ("text", "structured"):
+            raise ValueError("Unknown notes format")
+        if self.status_baseline not in ALL_STATUS_STRATEGIES:
+            raise ValueError("Choose a status baseline strategy")
+        if "status_notes_template" in self.strategies and self.notes_format != "structured":
+            raise ValueError("Template rendering requires structured notes")
+        if self.task_schedule == "final_only" and "summary" in self.strategies:
+            raise ValueError("Summary requires the every_turn task schedule")
         if (
             type(self.status_updates_per_turn) is not int
             or not 1 <= self.status_updates_per_turn <= 20
@@ -171,11 +210,17 @@ class Config:
         """Read the small TOML contract, rejecting unknown fields."""
         with path.open("rb") as stream:
             data = tomllib.load(stream)
+        return cls.from_dict(data)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Config":
+        """Validate a manifest or TOML configuration without changing its source mapping."""
+        data = dict(data)
         if "rates" in data:
-            data["rates"] = Rates(**data["rates"])
-        if "subagent" in data:
-            worker = data["subagent"]
-            if "rates" in worker:
+            data["rates"] = Rates(**data["rates"]) if data["rates"] is not None else None
+        if data.get("subagent") is not None:
+            worker = dict(data["subagent"])
+            if worker.get("rates") is not None:
                 worker["rates"] = Rates(**worker["rates"])
             data["subagent"] = SubagentConfig(**worker)
         if "strategies" in data:

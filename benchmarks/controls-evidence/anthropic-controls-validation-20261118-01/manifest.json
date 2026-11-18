@@ -1,0 +1,169 @@
+{
+  "condition_specs": {
+    "cache": {
+      "delegate_model": null,
+      "delegate_turns": [],
+      "notes_format": null,
+      "notes_model": null,
+      "notes_turns": [],
+      "renderer": null,
+      "status_model": null,
+      "status_turns": [],
+      "task_model": "claude-sonnet-5-5",
+      "task_turns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "updates_per_turn": 0
+    },
+    "cache_small_model": {
+      "delegate_model": null,
+      "delegate_turns": [],
+      "notes_format": null,
+      "notes_model": null,
+      "notes_turns": [],
+      "renderer": null,
+      "status_model": null,
+      "status_turns": [],
+      "task_model": "claude-haiku-5-5",
+      "task_turns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "updates_per_turn": 0
+    },
+    "delegate_same_model": {
+      "delegate_model": "claude-sonnet-5-5",
+      "delegate_turns": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "notes_format": null,
+      "notes_model": null,
+      "notes_turns": [],
+      "renderer": null,
+      "status_model": null,
+      "status_turns": [],
+      "task_model": "claude-sonnet-5-5",
+      "task_turns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "updates_per_turn": 0
+    },
+    "delegate_small_model": {
+      "delegate_model": "claude-haiku-5-5",
+      "delegate_turns": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "notes_format": null,
+      "notes_model": null,
+      "notes_turns": [],
+      "renderer": null,
+      "status_model": null,
+      "status_turns": [],
+      "task_model": "claude-sonnet-5-5",
+      "task_turns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "updates_per_turn": 0
+    }
+  },
+  "config": {
+    "max_output_tokens": 2048,
+    "model": "claude-sonnet-5-5",
+    "notes_format": "text",
+    "provider": "anthropic",
+    "rates": {
+      "as_of": "2026-11-06",
+      "cache_read": 0.1,
+      "cache_write": 2.5,
+      "input": 2.0,
+      "output": 10.0
+    },
+    "repetitions": 3,
+    "scenario": "replay",
+    "seed": 42,
+    "status_baseline": "status_full_history",
+    "status_updates_per_turn": 1,
+    "strategies": [
+      "cache",
+      "cache_small_model",
+      "delegate_same_model",
+      "delegate_small_model"
+    ],
+    "subagent": {
+      "model": "claude-haiku-5-5",
+      "rates": {
+        "as_of": "2026-11-06",
+        "cache_read": 0.01,
+        "cache_write": 0.125,
+        "input": 0.1,
+        "output": 0.5
+      }
+    },
+    "summary_after": 3,
+    "task_schedule": "every_turn",
+    "timeout_seconds": 60
+  },
+  "delegation_prompt_sha256": "4b2538383ef4a2374ce6715849c299215d2878b5bbd4191b3ebee76fa955d523",
+  "diagnostics_enabled": false,
+  "evaluator_sha256": "967cec89bb1ed6ee9aff69b4d174312dfa2fec96d264f86298951cc7acbeaab0",
+  "evaluator_version": "evidence-v2",
+  "finished_at": "2026-11-18T12:49:52.639757+00:00",
+  "package_version": "0.3.0",
+  "scenario_sha256": "1fec88977685fae92acf8800484af594e3ddded0c1a74b21ecfd89fbd7561de5",
+  "schema_version": 4,
+  "sdk_versions": {
+    "anthropic": "0.125.0",
+    "openai": "2.54.0"
+  },
+  "started_at": "2026-11-18T12:46:03.476875+00:00",
+  "status": "completed",
+  "status_evaluator_sha256": "a4712f5a8c830900674d2b096e2b9cc7ceefb915335e1f4abfe252cac3a65798",
+  "strategy_order": [
+    [
+      "delegate_same_model",
+      "cache_small_model",
+      "delegate_small_model",
+      "cache"
+    ],
+    [
+      "delegate_small_model",
+      "delegate_same_model",
+      "cache",
+      "cache_small_model"
+    ],
+    [
+      "cache_small_model",
+      "delegate_small_model",
+      "delegate_same_model",
+      "cache"
+    ]
+  ],
+  "synthetic": false
+}
