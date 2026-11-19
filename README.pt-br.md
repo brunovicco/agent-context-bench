@@ -25,17 +25,14 @@ custo e terminou mais rápido que o fluxo que delegava para esse mesmo modelo.
 Os pares foram GPT-5.6 Sol e GPT-6 Luna na OpenAI, e Sonnet 5.5 e Haiku 5.5
 na Anthropic.
 
-| Estratégia | OpenAI · USD/sessão | Tempo mediano | Anthropic · USD/sessão | Tempo mediano |
-| --- | ---: | ---: | ---: | ---: |
-| Modelo principal com cache | 0,08455 | 8,69 s | 0,07502 | 8,11 s |
-| **Modelo barato sozinho com cache** | **0,00218** | **9,29 s** | **0,00419** | **8,11 s** |
-| Delegação ao mesmo modelo | 0,11363 | 19,23 s | 0,10491 | 31,41 s |
-| Delegação ao modelo barato | 0,02462 | 19,92 s | 0,02857 | 27,68 s |
+![Custo estimado por papel do modelo e tempo mediano da sessão para as quatro estratégias na OpenAI e na Anthropic](benchmarks/controls-cost-comparison.pt-br.svg)
 
 O modelo sozinho custou **91,1% menos na OpenAI e 85,3% menos na Anthropic** que
 a delegação ao modelo barato. O fluxo delegado mantém o custo do modelo principal
 e acrescenta uma chamada ao subagente por turno de evidência. As medianas medem a
-sessão inteira. [CSV dos resultados](benchmarks/controls-validation.csv) · [Evidências sanitizadas](benchmarks/controls-evidence)
+sessão inteira.
+[Custos e tempos exatos](benchmarks/experiments.pt-br.md#controles-de-tarefa-no-replay-original) ·
+[CSV dos resultados](benchmarks/controls-validation.csv) · [Evidências sanitizadas](benchmarks/controls-evidence)
 
 ### A agenda de chamadas importa mesmo com cache
 

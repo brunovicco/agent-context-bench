@@ -25,16 +25,12 @@ and finished faster than the flow that delegated to that same model.
 The model pairs were GPT-5.6 Sol and GPT-6 Luna on OpenAI, and Sonnet 5.5 and Haiku
 5.5 on Anthropic.
 
-| Strategy | OpenAI · USD/session | Median time | Anthropic · USD/session | Median time |
-| --- | ---: | ---: | ---: | ---: |
-| Main model with cache | 0.08455 | 8.69 s | 0.07502 | 8.11 s |
-| **Lower-cost model alone with cache** | **0.00218** | **9.29 s** | **0.00419** | **8.11 s** |
-| Delegation to the same model | 0.11363 | 19.23 s | 0.10491 | 31.41 s |
-| Delegation to the lower-cost model | 0.02462 | 19.92 s | 0.02857 | 27.68 s |
+![Estimated cost by model role and median session time for the four strategies on OpenAI and Anthropic](benchmarks/controls-cost-comparison.svg)
 
 The standalone model cost **91.1% less on OpenAI and 85.3% less on Anthropic** than
 lower-cost delegation. The delegated workflow still pays for the main model and adds
 one subagent call per evidence turn. The medians cover the entire session.
+[Exact costs and times](benchmarks/experiments.md#task-controls-on-the-original-replay) ·
 [Results CSV](benchmarks/controls-validation.csv) · [Sanitized evidence](benchmarks/controls-evidence)
 
 ### Call timing can matter even with caching
